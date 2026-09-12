@@ -1,4 +1,17 @@
-import { ArrowUp, BrainCog, ChevronDown, Folder, Plus, RotateCcw, Shield, Square } from "lucide-react";
+import {
+  ArrowUp,
+  BrainCog,
+  Check,
+  ChevronDown,
+  FileText,
+  Folder,
+  Paperclip,
+  Plus,
+  RotateCcw,
+  Shield,
+  Square,
+  X,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "./Button";
 import { ModelMenu } from "./ModelMenu";
@@ -126,6 +139,9 @@ export function Composer({
   onThinkingLevel,
   permissionMode,
   onPermissionMode,
+  attachments,
+  onToggleAttachment,
+  loadWorkspaceFiles,
   hero,
 }: {
   draft: string;
@@ -148,11 +164,19 @@ export function Composer({
   onThinkingLevel?: (v: string) => void;
   permissionMode?: PermissionMode;
   onPermissionMode?: (v: PermissionMode) => void;
+  attachments?: string[];
+  onToggleAttachment?: (path: string) => void;
+  loadWorkspaceFiles?: () => Promise<{ path: string }[]>;
   hero?: boolean;
 }) {
   const [groupMenu, setGroupMenu] = useState(false);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
   const [thinkingPop, setThinkingPop] = useState(false);
   const [permPop, setPermPop] = useState(false);
+  const [attachPop, setAttachPop] = useState(false);
+  const [attachQuery, setAttachQuery] = useState("");
+  const [wsFiles, setWsFiles] = useState<{ path: string }[] | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     const el = taRef.current;
@@ -177,16 +201,62 @@ export function Composer({
 
   function pickGroup(id: string) {
     if (id === "__new__") {
-      const name = window.prompt("工作空间名称");
-      if (name?.trim()) onDraftGroup(onCreateGroup(name.trim()));
-    } else {
-      onDraftGroup(id);
+      // 内联输入替代系统 prompt（UI 规范）
+      setCreatingGroup(true);
+      setNewGroupName("");
+      return;
     }
+    onDraftGroup(id);
     setGroupMenu(false);
   }
 
+  function confirmNewGroup() {
+    const name = newGroupName.trim();
+    if (!name) return;
+    onDraftGroup(onCreateGroup(name));
+    setNewGroupName("");
+    setCreatingGroup(false);
+    setGroupMenu(false);
+  }
+
+  async function toggleAttachPop() {
+    const next = !attachPop;
+    setAttachPop(next);
+    setGroupMenu(false);
+    setThinkingPop(false);
+    setPermPop(false);
+    if (next && wsFiles === null && loadWorkspaceFiles) {
+      try {
+        setWsFiles(await loadWorkspaceFiles());
+      } catch {
+        setWsFiles([]);
+      }
+    }
+  }
+
+  function toggleAttachment(path: string) {
+    onToggleAttachment?.(path);
+  }
+
+  const filteredFiles = (wsFiles ?? []).filter((f) =>
+    attachQuery.trim() ? f.path.toLowerCase().includes(attachQuery.trim().toLowerCase()) : true,
+  );
+
   return (
     <div className={"composer " + (hero ? "composer-hero" : "")}>
+      {attachments && attachments.length > 0 && (
+        <div className="composer-attachments">
+          {attachments.map((path) => (
+            <span className="attach-chip" key={path} title={path}>
+              <FileText size={12} />
+              <span>{path}</span>
+              <button aria-label={`移除引用 ${path}`} onClick={() => onToggleAttachment?.(path)}>
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
       <textarea
         aria-label="消息"
         rows={hero ? 3 : 2}
@@ -215,6 +285,7 @@ export function Composer({
                 onClick={() => {
                   setGroupMenu(!groupMenu);
                   setThinkingPop(false);
+                  setAttachPop(false);
                 }}
               >
                 <Folder size={14} />
@@ -223,16 +294,82 @@ export function Composer({
               </button>
               {groupMenu && (
                 <div className="session-menu group-menu">
-                  <button onClick={() => pickGroup(UNGROUPED)}>未分组</button>
-                  {workspaces.map((w) => (
-                    <button key={w.id} onClick={() => pickGroup(w.id)}>
-                      {w.name}
-                    </button>
-                  ))}
-                  <button onClick={() => pickGroup("__new__")}>
-                    <Plus size={13} /> 新建工作空间
-                  </button>
+                  {creatingGroup ? (
+                    <MenuInputRow
+                      initial={newGroupName}
+                      onChange={setNewGroupName}
+                      placeholder="工作空间名称"
+                      onConfirm={confirmNewGroup}
+                      onCancel={() => {
+                        setCreatingGroup(false);
+                        setNewGroupName("");
+                      }}
+                    />
+                  ) : (
+                    <>
+                      <button onClick={() => pickGroup(UNGROUPED)}>未分组</button>
+                      {workspaces.map((w) => (
+                        <button key={w.id} onClick={() => pickGroup(w.id)}>
+                          {w.name}
+                        </button>
+                      ))}
+                      <button onClick={() => pickGroup("__new__")}>
+                        <Plus size={13} /> 新建工作空间
+                      </button>
+                    </>
+                  )}
                 </div>
+              )}
+            </div>
+          )}
+          {loadWorkspaceFiles && (
+            <div className="group-anchor">
+              <button
+                className={"group-select attach-btn" + (attachments?.length ? " has-attachments" : "")}
+                onClick={() => void toggleAttachPop()}
+                title="引用工作空间文件"
+              >
+                <Paperclip size={14} />
+                {attachments?.length ? <span className="attach-count">{attachments.length}</span> : null}
+              </button>
+              {attachPop && (
+                <>
+                  <div className="menu-overlay" onClick={() => setAttachPop(false)} />
+                  <div className="session-menu attach-pop">
+                    <input
+                      autoFocus
+                      value={attachQuery}
+                      placeholder="搜索工作空间文件"
+                      onChange={(e) => setAttachQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") setAttachPop(false);
+                      }}
+                    />
+                    <div className="attach-list">
+                      {wsFiles === null ? (
+                        <p className="attach-empty">正在读取工作空间…</p>
+                      ) : filteredFiles.length === 0 ? (
+                        <p className="attach-empty">{attachQuery ? "没有匹配的文件" : "工作空间还没有文件"}</p>
+                      ) : (
+                        filteredFiles.map((f) => {
+                          const on = attachments?.includes(f.path);
+                          return (
+                            <button
+                              key={f.path}
+                              className={on ? "current" : ""}
+                              title={f.path}
+                              onClick={() => toggleAttachment(f.path)}
+                            >
+                              <FileText size={13} />
+                              <span className="f-path">{f.path}</span>
+                              {on && <Check size={13} />}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           )}
@@ -245,6 +382,7 @@ export function Composer({
                 setPermPop(!permPop);
                 setGroupMenu(false);
                 setThinkingPop(false);
+                setAttachPop(false);
               }}
               title="Agent 权限模式"
             >
@@ -282,6 +420,7 @@ export function Composer({
                 onClick={() => {
                   setThinkingPop(!thinkingPop);
                   setGroupMenu(false);
+                  setAttachPop(false);
                 }}
               >
                 <BrainCog size={14} />
@@ -341,6 +480,39 @@ export function Composer({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** 菜单内联输入：替代系统 prompt，Enter 确认 / Esc 取消。 */
+function MenuInputRow({
+  initial,
+  placeholder,
+  onConfirm,
+  onCancel,
+  onChange,
+}: {
+  initial: string;
+  placeholder: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="menu-input-row">
+      <input
+        autoFocus
+        value={initial}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && initial.trim()) onConfirm();
+          if (e.key === "Escape") onCancel();
+        }}
+      />
+      <button className="mi-ok" aria-label="确认" disabled={!initial.trim()} onClick={() => initial.trim() && onConfirm()}>
+        <Check size={13} />
+      </button>
     </div>
   );
 }

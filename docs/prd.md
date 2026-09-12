@@ -4,7 +4,7 @@
 日期：2026-09-11  
 状态：需求基线，待实施验证  
 范围依据：以用户最新确认的“好看的 UI + pi 基础能力”为准。  
-当前阶段：**第二阶段（Agent 商业化体验）已确认**，见 [commercial-ui-prd.md](./commercial-ui-prd.md)，P0 六项实施中。
+当前阶段：**第二阶段 P0 六项已完成、Codex 式执行过程已落地，P1 实施中**，见 [commercial-ui-prd.md](./commercial-ui-prd.md)。
 
 ## 1. 产品定位
 

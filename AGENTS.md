@@ -21,7 +21,7 @@
 ```sh
 npm run start     # 一键启动：vite(1420) + bridge + sidecar
 npm run dev       # 仅 vite（无引擎时自动预览模式）
-npm run smoke     # sidecar 协议冒烟（12 项，无需 API Key）
+npm run smoke     # sidecar 协议冒烟（13 项，无需 API Key）
 npm run build     # 类型检查 + 生产构建
 OFFICE_AGENT_ROOT=$PWD npm run tauri -w @office/desktop -- build   # 打包 deb
 ```
@@ -32,7 +32,7 @@ OFFICE_AGENT_ROOT=$PWD npm run tauri -w @office/desktop -- build   # 打包 deb
 - 协议命令/事件类型只在 `packages/contracts` 定义，改协议先改这里，UI 与 sidecar 同步更新。
 - UI 不直接 import pi；pi 细节全部封在 `apps/sidecar`。
 - 单活跃 run；命令响应只表示接受/拒绝，结果靠事件（带 runId）送达。
-- API Key 只内存注入，不落盘；用户数据在 `~/.office-agent/pi` 与 `~/office-agent-workspace`。
+- API Key 保存在应用隔离认证文件（`~/.office-agent/pi/auth.json`，0600），后续迁移系统凭证库；用户数据在 `~/.office-agent/pi` 与 `~/office-agent-workspace`。
 
 ## UI 规范（用户明确要求）
 

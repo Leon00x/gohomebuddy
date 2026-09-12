@@ -59,6 +59,7 @@ export class SidecarServer {
       this.runtime.openPath(requiredString(p, "path"), Boolean(p.revealDir)),
     );
     this.handlers.set("fs.stat", async (p) => this.runtime.statFile(requiredString(p, "path")));
+    this.handlers.set("workspace.files", () => this.runtime.listWorkspaceFiles());
     this.handlers.set("run.cancel", () => this.runtime.cancelRun());
   }
 

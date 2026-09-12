@@ -4,6 +4,23 @@
 
 ---
 
+## 2026-09-13（P1 启动：控制栏附件 / Workspace 信息 / Header 运行信息 / Hover 体系）
+
+- **用户确认**：继续实施 commercial-ui-prd.md 已确认的 P1 四项，同时清掉两处 UI 规范违规。
+- **实现决定**：
+  - 附件按主 PRD F03"文件上下文引用"落地：sidecar 新增 `workspace.files`（列 cwd 相对路径，跳过隐藏与依赖目录，上限 400 条）；Composer 加回形针浮层（搜索 + 勾选），选中文件以可移除标签展示；发送时以"引用工作空间文件"清单并入 prompt，工具按需读取，不整文件塞上下文；不改 `run.start` 协议语义。
+  - Workspace 信息放 Header：cwd 名 chip + 浮层（完整路径 / 打开目录 / 复制路径 / 本会话产物，点击即打开）；无产物时如实显示，不放假数据。
+  - Hover 反馈体系：会话行 ••• hover 显隐、Tool/Artifact 卡 hover、全局 focus-visible，遵循过渡三档 token。
+  - 规范违规清理：Composer 新建工作空间的 `window.prompt` 改浮层内联输入（menu-input-row 模式）；删会话/删工作空间的 `window.confirm` 改应用内 ConfirmDialog（Danger 主按钮，z-40 避开遮罩坑）。
+- **影响面**：contracts + sidecar（smoke 增至 13 项）+ Composer/App + styles.css；README/AGENTS 冒烟计数同步为 13。
+- **结果（已验证）**：
+  - 附件端到端：浮层列出工作空间文件（搜索过滤）、选中出标签、发送后引擎记录的 prompt 含"引用工作空间文件"清单，模型真实执行读取文件并答出内容；发送后标签自动清空。重试/继续沿用消息内原始 prompt（含引用）。
+  - Header 工作空间浮层：chip 显示 cwd 名，浮层含完整路径/打开目录/复制路径/本会话产物（空态如实显示），浅深双主题检查通过。
+  - ConfirmDialog：删会话/删工作空间均走应用内确认框（Danger 键），配合真实 session.delete 验证生效；Composer 新建工作空间改为浮层内联输入，仓库内 `window.prompt`/`window.confirm` 已清零。
+  - Hover/focus 体系：artifact 卡 hover、focus-visible 基线已在（会话行 ••• 、菜单项、tc-row 原有），本轮补 artifact 过渡。
+  - typecheck ✓、build ✓、smoke 13/13 ✓；测试会话与测试产物已清理。
+- **状态**：已完成。P1 剩余观察项：workspace.files 超过 400 条时的 truncated 提示（当前工作空间规模小，未实测截断分支）。
+
 ## 2026-09-13（Codex 式交互回归收尾 + 桥断帧修复）
 
 - **用户需求**：继续上一代理中断的页面实操回归（运行态展开、完成态折叠、回答置底、双主题），并完成其列出的遗留项（文档同步、分包、git 基线）。

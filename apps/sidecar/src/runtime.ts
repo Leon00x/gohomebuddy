@@ -299,6 +299,51 @@ export class PiRuntime {
     }
   }
 
+  /**
+   * 列出工作空间内可作为上下文引用的文件：相对 cwd、正斜杠、
+   * 跳过隐藏条目与依赖/产物目录；超过上限置 truncated。
+   */
+  async listWorkspaceFiles(limit = 400): Promise<{
+    cwd: string;
+    files: { path: string }[];
+    truncated: boolean;
+  }> {
+    const { readdir } = await import("node:fs/promises");
+    const SKIP_DIRS = new Set([
+      "node_modules", ".git", "dist", "build", "out", "target",
+      ".next", ".venv", "venv", "__pycache__", ".cache", "coverage",
+    ]);
+    const files: { path: string }[] = [];
+    let truncated = false;
+    const walk = async (dir: string, depth: number): Promise<void> => {
+      if (truncated || depth > 4) return;
+      let entries;
+      try {
+        entries = await readdir(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        if (files.length >= limit) {
+          truncated = true;
+          return;
+        }
+        if (entry.name.startsWith(".")) continue;
+        if (entry.isDirectory()) {
+          if (SKIP_DIRS.has(entry.name)) continue;
+          await walk(nodePath.join(dir, entry.name), depth + 1);
+        } else if (entry.isFile()) {
+          files.push({
+            path: nodePath.relative(this.cwd, nodePath.join(dir, entry.name)).split(nodePath.sep).join("/"),
+          });
+        }
+      }
+    };
+    await walk(this.cwd, 0);
+    files.sort((a, b) => a.path.localeCompare(b.path));
+    return { cwd: this.cwd, files, truncated };
+  }
+
   /** 删除会话：仅允许删除应用会话目录内的文件。 */
   async deleteSession(file: string): Promise<void> {
     if (this.busy) throw Object.assign(new Error("运行中不能删除会话"), { code: "run_already_active" });

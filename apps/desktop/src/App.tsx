@@ -23,6 +23,7 @@ import {
 import { marked } from "marked";
 import { kindFromPath, ArtifactCard } from "./components/ArtifactCard";
 import { ActivityTimeline } from "./components/ActivityTimeline";
+import { ConfirmDialog, type ConfirmRequest } from "./components/ConfirmDialog";
 import { StreamingMarkdown } from "./components/StreamingMarkdown";
 import type { Artifact, CatalogProvider, ModelProfile, ProtocolEvent, ToolStep } from "@office/contracts";
 import { Button } from "./components/Button";
@@ -64,6 +65,9 @@ export function App() {
     load<PermissionMode>("office.permissionMode", "ask"),
   );
   const [showJump, setShowJump] = useState(false);
+  const [attachments, setAttachments] = useState<string[]>([]);
+  const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
+  const [wsPop, setWsPop] = useState(false);
 
   const [active, setActive] = useState(""),
     [draft, setDraft] = useState(""),
@@ -320,6 +324,13 @@ export function App() {
     const queueing = mode === "live" && running === session.id;
     const text = raw.trim(),
       id = session.id;
+    // 附件引用只作用于当前草稿发送；继续/重新开始沿用消息里记录的原始 prompt
+    const refBlock =
+      !override && attachments.length
+        ? `\n\n[引用工作空间文件，按需读取，不要整段粘贴进回答：\n${attachments.map((p) => "- " + p).join("\n")}]`
+        : "";
+    const promptText = text + refBlock;
+    if (refBlock) setAttachments([]);
     const mid = crypto.randomUUID();
     setDraft("");
     follow.current = true;
@@ -337,7 +348,7 @@ export function App() {
           activities: [],
           runStartedAt: Date.now(),
           runStatus: "running",
-          prompt: text,
+          prompt: promptText,
         },
       ],
     }));
@@ -349,7 +360,7 @@ export function App() {
         q.push(mid);
         pendingQueue.current.set(activeRun.current.runId, q);
         try {
-          await client.current.request("run.followUp", { prompt: text });
+          await client.current.request("run.followUp", { prompt: promptText });
         } catch (err) {
           pendingQueue.current.set(activeRun.current.runId, q.filter((x) => x !== mid));
           update(id, (s) => ({
@@ -396,7 +407,7 @@ export function App() {
       try {
         // run.start 的 payload 就是 runId 字符串本身
         const started = await client.current.request("run.start", {
-          prompt: text,
+          prompt: promptText,
           providerId: selection.providerId || undefined,
           modelId: selection.modelId || undefined,
           thinkingLevel: effectiveThinking,
@@ -509,12 +520,29 @@ export function App() {
   const wsItems = (wsId: string) => visible.filter((s) => groups[s.id] === wsId);
   const ungrouped = visible.filter((s) => !groups[s.id]);
   const empty = session.messages.length === 0;
+  // 本会话产物（Header 工作空间浮层用）：同路径取最后一次
+  const sessionArtifacts = (() => {
+    const map = new Map<string, Artifact>();
+    for (const m of session.messages) for (const a of m.artifacts ?? []) map.set(a.path, a);
+    return [...map.values()].slice(-5);
+  })();
+  const workspaceName = handshake?.cwd
+    ? handshake.cwd.split(/[\\/]/).filter(Boolean).pop() ?? handshake.cwd
+    : "";
   const supportsReasoning = isLive
     ? (providers
         .find((p) => p.id === selection.providerId)
         ?.models.find((m) => m.id === selection.modelId)?.reasoning ?? false)
     : false;
   const effectiveThinking = supportsReasoning ? selection.thinkingLevel ?? "medium" : undefined;
+
+  async function loadWorkspaceFiles() {
+    if (!client.current.connected) return [];
+    const res = (await client.current.request("workspace.files")) as {
+      files?: { path: string }[];
+    };
+    return res.files ?? [];
+  }
 
   const composerCommon = {
     draft,
@@ -531,6 +559,12 @@ export function App() {
     onCreateGroup: createWorkspace,
     permissionMode,
     onPermissionMode: setPermissionMode,
+    attachments,
+    onToggleAttachment: (path: string) =>
+      setAttachments((all) =>
+        all.includes(path) ? all.filter((p) => p !== path) : [...all, path],
+      ),
+    loadWorkspaceFiles: () => loadWorkspaceFiles(),
     providers,
     selection,
     onSelectModel: setSelection,
@@ -631,21 +665,24 @@ export function App() {
                 </button>
                 <button
                   onClick={() => {
-                    if (!window.confirm("删除这个会话？")) {
-                      setMenu(null);
-                      return;
-                    }
-                    if (isLive && s.file) {
-                      void client.current
-                        .request("session.delete", { file: s.file })
-                        .catch(() => {});
-                    }
-                    setSessions((all) => {
-                      const rest = all.filter((x) => x.id !== s.id);
-                      return rest.length ? rest : [newBlank()];
-                    });
-                    if (active === s.id) setActive("");
                     setMenu(null);
+                    setConfirmRequest({
+                      title: "删除会话",
+                      body: `“${s.title}”将被删除，历史无法恢复。`,
+                      confirmLabel: "删除",
+                      action: () => {
+                        if (isLive && s.file) {
+                          void client.current
+                            .request("session.delete", { file: s.file })
+                            .catch(() => {});
+                        }
+                        setSessions((all) => {
+                          const rest = all.filter((x) => x.id !== s.id);
+                          return rest.length ? rest : [newBlank()];
+                        });
+                        if (active === s.id) setActive("");
+                      },
+                    });
                   }}
                 >
                   <Trash2 size={13} /> 删除
@@ -814,10 +851,13 @@ export function App() {
                           </button>
                           <button
                             onClick={() => {
-                              if (window.confirm(`删除工作空间“${w.name}”？会话会回到未分组。`)) {
-                                deleteWorkspace(w.id);
-                              }
                               setMenu(null);
+                              setConfirmRequest({
+                                title: "删除工作空间",
+                                body: `“${w.name}”将被删除，其中的会话回到未分组。`,
+                                confirmLabel: "删除",
+                                action: () => deleteWorkspace(w.id),
+                              });
                             }}
                           >
                             <Trash2 size={13} /> 删除工作空间
@@ -873,6 +913,63 @@ export function App() {
                 );
               return null;
             })()}
+            {isLive && handshake?.cwd && (
+              <div className="group-anchor ws-chip-anchor">
+                <button
+                  className={"ws-chip" + (wsPop ? " open" : "")}
+                  onClick={() => setWsPop(!wsPop)}
+                  title={handshake.cwd}
+                >
+                  <Folder size={13} />
+                  {workspaceName}
+                </button>
+                {wsPop && (
+                  <>
+                    <div className="menu-overlay" onClick={() => setWsPop(false)} />
+                    <div className="session-menu ws-pop">
+                      <div className="ws-pop-path">{handshake.cwd}</div>
+                      <div className="ws-pop-actions">
+                        <button
+                          onClick={() =>
+                            void client.current
+                              .request("os.open", { path: handshake.cwd })
+                              .catch(() => {})
+                          }
+                        >
+                          <Folder size={13} /> 打开目录
+                        </button>
+                        <button
+                          onClick={() =>
+                            void navigator.clipboard.writeText(handshake.cwd).catch(() => {})
+                          }
+                        >
+                          <Copy size={13} /> 复制路径
+                        </button>
+                      </div>
+                      <div className="ws-pop-label">本会话产物</div>
+                      {sessionArtifacts.length === 0 ? (
+                        <p className="ws-pop-empty">本会话还没有生成文件</p>
+                      ) : (
+                        sessionArtifacts.map((a) => (
+                          <button
+                            key={a.path}
+                            className="ws-pop-file"
+                            title={a.path}
+                            onClick={() =>
+                              void client.current
+                                .request("os.open", { path: a.path })
+                                .catch(() => {})
+                            }
+                          >
+                            {a.name}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
             {collapsed && (
               <Button
                 variant="ghost"
@@ -1063,6 +1160,8 @@ export function App() {
           onSelection={setSelection}
           handshake={handshake}
         />
+
+        <ConfirmDialog request={confirmRequest} onCancel={() => setConfirmRequest(null)} />
       </main>
     </div>
   );
@@ -1419,7 +1518,7 @@ function useWindowDrag() {
       }
     ).__TAURI_INTERNALS__;
     const label = internals.metadata.currentWindow.label;
-    const interactive = "button, input, textarea, select, .session-menu, .model-menu, .group-menu, .effort-pop, .win-controls, a";
+    const interactive = "button, input, textarea, select, .session-menu, .model-menu, .group-menu, .effort-pop, .attach-pop, .menu-overlay, .win-controls, a";
     const onDown = (e: Event) => {
       if ((e as MouseEvent).button !== 0) return;
       const target = e.target as HTMLElement;

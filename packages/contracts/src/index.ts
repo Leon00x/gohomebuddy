@@ -93,7 +93,8 @@ export type ProtocolMethodName =
   | "run.cancel"
   | "config.remoteModels"
   | "os.open"
-  | "fs.stat";
+  | "fs.stat"
+  | "workspace.files";
 
 export type ProtocolEventType =
   | "run.started"
@@ -170,6 +171,18 @@ export interface Artifact {
   kind: "sheet" | "doc" | "slides" | "pdf" | "image" | "markdown" | "text" | "code" | "other";
   sizeKb?: number;
   modified?: boolean;
+}
+
+/** workspace.files：工作空间内可选为上下文引用的文件（相对 cwd，正斜杠）。 */
+export interface WorkspaceFileEntry {
+  path: string;
+}
+
+export interface WorkspaceFilesResult {
+  cwd: string;
+  files: WorkspaceFileEntry[];
+  /** 超过单次列出上限时为 true，UI 应提示改用搜索缩小范围。 */
+  truncated: boolean;
 }
 
 export interface RunStartParams {

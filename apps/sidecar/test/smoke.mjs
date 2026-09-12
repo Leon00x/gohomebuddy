@@ -1,7 +1,7 @@
 // S0 smoke: spawn the built sidecar and exercise the protocol end to end.
 // Offline-safe: no model API key is used; the run phase expects an auth error,
 // which still proves the event pipeline (start -> events -> run.end) works.
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { PassThrough } from "node:stream";
 import * as os from "node:os";
@@ -12,6 +12,7 @@ const root = nodePath.resolve(new URL("..", import.meta.url).pathname);
 const dataDir = await mkdtemp(nodePath.join(os.tmpdir(), "office-agent-smoke-"));
 const workspaceDir = nodePath.join(dataDir, "workspace");
 await mkdir(workspaceDir, { recursive: true });
+await writeFile(nodePath.join(workspaceDir, "probe-attachment.txt"), "ok");
 
 process.env.PI_OFFLINE = "1";
 const agentDir = nodePath.join(dataDir, "pi");
@@ -153,7 +154,15 @@ try {
   const list = await request("session.list");
   check("session.list after runs", list.ok && list.payload.length >= 1, `${list.payload?.length} sessions, first title: ${list.payload?.[0]?.title?.slice(0, 24)}`);
 
-  // 6. unknown method + protocol version guard
+  // 7. workspace.files lists workspace files for the attachment picker
+  const wsFiles = await request("workspace.files");
+  check(
+    "workspace.files lists workspace",
+    wsFiles.ok && (wsFiles.payload?.files ?? []).some((f) => f.path === "probe-attachment.txt"),
+    JSON.stringify(wsFiles.payload?.files ?? wsFiles.error),
+  );
+
+  // 8. unknown method + protocol version guard
   const unknown = await request("nope.nope");
   check("unknown method rejected", unknown.ok === false && unknown.error?.code === "unknown_method");
 } catch (err) {

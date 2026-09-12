@@ -2701,3 +2701,258 @@ main {
   color: var(--muted);
   margin-left: 6px;
 }
+
+/* ---- P1: 输入框附件（文件上下文引用） ---- */
+.composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 14px 0;
+}
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 260px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--soft);
+  color: var(--text);
+  font-size: 12px;
+}
+.attach-chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attach-chip button {
+  display: inline-flex;
+  padding: 2px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+}
+.attach-chip button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.attach-btn.has-attachments {
+  color: var(--accent);
+}
+.attach-count {
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10.5px;
+  line-height: 15px;
+  text-align: center;
+}
+.attach-pop {
+  bottom: calc(100% + 8px);
+  top: auto;
+  left: 0;
+  width: 320px;
+  max-height: 340px;
+  overflow: auto;
+  padding: 8px;
+}
+.attach-pop > input {
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12.5px;
+}
+.attach-list button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font-size: 12.5px;
+  text-align: left;
+}
+.attach-list button:hover {
+  background: var(--hover);
+}
+.attach-list button.current {
+  color: var(--accent);
+}
+.attach-list .f-path {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "SF Mono", "JetBrains Mono", Consolas, monospace;
+  font-size: 11.5px;
+}
+.attach-empty {
+  padding: 10px 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* ---- P1: Header 工作空间 chip + 浮层 ---- */
+.ws-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  max-width: 180px;
+}
+.ws-chip span,
+.ws-chip {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws-chip:hover,
+.ws-chip.open {
+  background: var(--hover);
+  color: var(--text);
+}
+.ws-chip-anchor {
+  flex-shrink: 0;
+}
+.ws-pop {
+  top: calc(100% + 6px);
+  left: 0;
+  width: 320px;
+  padding: 12px;
+}
+.ws-pop-path {
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "SF Mono", "JetBrains Mono", Consolas, monospace;
+  font-size: 11.5px;
+  word-break: break-all;
+}
+.ws-pop-actions {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+.ws-pop-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+}
+.ws-pop-actions button:hover {
+  background: var(--hover);
+}
+.ws-pop-label {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.4px;
+}
+.ws-pop-empty {
+  margin: 6px 0 2px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.ws-pop-file {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font-size: 12.5px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws-pop-file:hover {
+  background: var(--hover);
+}
+
+/* ---- P1: 应用内删除确认 ---- */
+.confirm-dialog {
+  position: fixed;
+  z-index: 40;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(360px, calc(100vw - 48px));
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.confirm-title {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+.confirm-body {
+  margin: 8px 0 16px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.confirm-cancel {
+  padding: 7px 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+}
+.confirm-cancel:hover {
+  background: var(--hover);
+}
+.confirm-danger {
+  padding: 7px 14px;
+  border: none;
+  border-radius: 6px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 13px;
+}
+.confirm-danger:hover {
+  filter: brightness(1.06);
+}
+
+/* ---- P1: Hover 反馈补齐（四态之一：hover/active/focus/disabled 已有基线） ---- */
+.artifact-card {
+  transition:
+    background var(--t-fast, 0.12s),
+    border-color 0.12s;
+}
+.artifact-card:hover {
+  background: var(--bg);
+  border-color: #d5dcd2;
+}

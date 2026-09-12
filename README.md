@@ -13,7 +13,7 @@ npm run start     # 一条命令拉起 界面(1420) + dev bridge + pi sidecar
 
 ```sh
 npm run dev       # 仅启动界面（无运行时自动降级为预览演示模式）
-npm run smoke     # sidecar 协议冒烟（12 项，无需 API Key）
+npm run smoke     # sidecar 协议冒烟（13 项，无需 API Key）
 npm run build     # 类型检查 + 生产构建
 npm run desktop   # Tauri 开发窗口（需要 Rust；当前仍是开发容器）
 ```
