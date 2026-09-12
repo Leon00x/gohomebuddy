@@ -1,0 +1,1 @@
+{"main-capability":{"identifier":"main-capability","description":"主窗口核心权限：窗口控制与无边框拖动","local":true,"windows":["main"],"permissions":["core:default","core:window:allow-minimize","core:window:allow-maximize","core:window:allow-unmaximize","core:window:allow-toggle-maximize","core:window:allow-start-dragging","core:window:allow-close"]}}

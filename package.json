@@ -1,0 +1,20 @@
+{
+  "name": "office-agent",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "apps/desktop",
+    "packages/contracts",
+    "apps/sidecar"
+  ],
+  "scripts": {
+    "dev": "npm run build -w @office/contracts && npm run dev -w @office/desktop",
+    "start": "node apps/desktop/scripts/start.mjs",
+    "build": "npm run build -w @office/contracts && npm run build -w @office/desktop",
+    "typecheck": "npm run build -w @office/contracts && tsc --noEmit -p apps/desktop/tsconfig.json && npm run build -w @office/sidecar",
+    "desktop": "npm run tauri -w @office/desktop -- dev",
+    "sidecar": "npm run build -w @office/sidecar && node apps/sidecar/dist/index.js",
+    "smoke": "npm run build -w @office/contracts && npm run smoke -w @office/sidecar"
+  }
+}
