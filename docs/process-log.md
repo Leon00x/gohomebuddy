@@ -8,7 +8,8 @@
 
 - **用户需求**：CI 需能构建 Linux(Ubuntu)、Windows、macOS（ARM 与 Intel 分别打包）。
 - **决定**：新增 `.github/workflows/build.yml`。成本策略（私有仓库 macOS 10x/Windows 2x 计费倍率）：推 main/PR 只构建 Linux 做持续验证；`workflow_dispatch`（targets=all）或推 `v*` 标签触发全平台矩阵——ubuntu-22.04(deb)、windows-latest(msi)、macos-14(aarch64 dmg)、macos-13(x86_64 dmg)。Rust 缓存加速；`OFFICE_AGENT_ROOT` 编译期注入与本地一致；产物按平台上传 artifact。
-- **状态**：已推送并验证运行结果（见后续记录）。
+- **状态**：全平台验证通过（run 34759401228 四个 job 全绿）。过程中修复两处：①CI 产物 glob 未命中，改为矩阵显式 target triple 的确定性路径 + 产物清单诊断步骤；②Windows 打包报 `Couldn't find a .ico icon`——tauri.conf.json 缺 `bundle.icon`（本地只打 deb 未暴露），已补图标数组。另将 Intel 目标从排队严重的 macos-13 挪到 macos-14 交叉编译 x86_64-apple-darwin。产物：deb/msi/dmg(ARM+Intel) 各约 2.6–2.9MB，在 Actions run 页面以 artifact 下载；发布到 GitHub Releases 待签名策略确定后另立记录。
+- **成本提示**：私有仓库 macOS 计费 10x、Windows 2x；日常推 main 只跑 Linux，全平台仅在手动触发（targets=all）或打 `v*` 标签时运行。
 
 ## 2026-09-13（文档整理 + 建立私有远端仓库）
 
