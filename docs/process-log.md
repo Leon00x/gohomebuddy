@@ -4,6 +4,12 @@
 
 ---
 
+## 2026-09-13（GitHub Actions 构建流水线）
+
+- **用户需求**：CI 需能构建 Linux(Ubuntu)、Windows、macOS（ARM 与 Intel 分别打包）。
+- **决定**：新增 `.github/workflows/build.yml`。成本策略（私有仓库 macOS 10x/Windows 2x 计费倍率）：推 main/PR 只构建 Linux 做持续验证；`workflow_dispatch`（targets=all）或推 `v*` 标签触发全平台矩阵——ubuntu-22.04(deb)、windows-latest(msi)、macos-14(aarch64 dmg)、macos-13(x86_64 dmg)。Rust 缓存加速；`OFFICE_AGENT_ROOT` 编译期注入与本地一致；产物按平台上传 artifact。
+- **状态**：已推送并验证运行结果（见后续记录）。
+
 ## 2026-09-13（文档整理 + 建立私有远端仓库）
 
 - **用户需求**：总结整理文档与代码说明（需求/开发测试流程/构建），去除冗余和冲突；在 GitHub 创建私有仓库并推送。
