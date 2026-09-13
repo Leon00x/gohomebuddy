@@ -42,7 +42,7 @@ jobs:
               {"os":"ubuntu-22.04","name":"linux-x64","target":"x86_64-unknown-linux-gnu","bundles":"deb","artifact":"GoHomeBuddy-linux-x64"},
               {"os":"windows-latest","name":"windows-x64","target":"x86_64-pc-windows-msvc","bundles":"msi","artifact":"GoHomeBuddy-windows-x64"},
               {"os":"macos-14","name":"macos-arm64","target":"aarch64-apple-darwin","bundles":"dmg","artifact":"GoHomeBuddy-macos-arm64"},
-              {"os":"macos-13","name":"macos-intel","target":"x86_64-apple-darwin","bundles":"dmg","artifact":"GoHomeBuddy-macos-intel"}
+              {"os":"macos-14","name":"macos-intel","target":"x86_64-apple-darwin","bundles":"dmg","artifact":"GoHomeBuddy-macos-intel"}
             ]}'
           else
             matrix='{"include":[
