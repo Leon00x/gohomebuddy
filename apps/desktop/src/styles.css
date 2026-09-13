@@ -2984,3 +2984,33 @@ main {
   color: var(--muted);
   letter-spacing: 0.3px;
 }
+
+/* + 添加附件按钮：圆角方块（后续可扩展为 ZCode 式多项目菜单：@ 上下文、/ 能力、$ 技能） */
+.attach-btn {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  justify-content: center;
+  padding: 0;
+  border-radius: 9px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.attach-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.attach-btn .attach-count {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10.5px;
+  line-height: 15px;
+  text-align: center;
+}

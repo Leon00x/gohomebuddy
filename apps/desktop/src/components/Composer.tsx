@@ -3,11 +3,9 @@ import {
   BrainCog,
   Check,
   ChevronDown,
-  Cpu,
   FileText,
   Folder,
   Hand,
-  Paperclip,
   Plus,
   RotateCcw,
   ShieldAlert,
@@ -357,7 +355,7 @@ export function Composer({
                 onClick={() => void toggleAttachPop()}
                 title="引用工作空间文件"
               >
-                <Paperclip size={14} />
+                <Plus size={16} />
                 {attachments?.length ? <span className="attach-count">{attachments.length}</span> : null}
               </button>
               {attachPop && (
