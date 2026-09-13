@@ -4,6 +4,12 @@
 
 ---
 
+## 2026-09-13（品牌图标：aitoys 水獭 logo）
+
+- **用户需求**：使用本地 aitoys 项目的水獭 logo 作为产品图标。
+- **改动**：源图取 aitoys web 的 apple-icon.png（180×180，透明底），lanczos 放大到 1024 后用 `tauri icon` 重新生成全套打包图标（ico/icns/各尺寸 png/Windows Store/Android）；UI 三处品牌位（侧栏品牌、hero、消息头像）由 Lucide 占位图标换为水獭图（`src/assets/otter.png`，透明底适配双主题）。新增 `vite-env.d.ts` 补 Vite 资源类型。
+- **状态**：已完成，typecheck/build 通过。
+
 ## 2026-09-13（GitHub Actions 构建流水线）
 
 - **用户需求**：CI 需能构建 Linux(Ubuntu)、Windows、macOS（ARM 与 Intel 分别打包）。

@@ -6,7 +6,6 @@ import {
   CircleAlert,
   Copy,
   Folder,
-  Layers2,
   MessageSquare,
   MoreHorizontal,
   PanelLeftClose,
@@ -21,6 +20,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { marked } from "marked";
+import otterLogo from "./assets/otter.png";
 import { kindFromPath, ArtifactCard } from "./components/ArtifactCard";
 import { ActivityTimeline } from "./components/ActivityTimeline";
 import { ConfirmDialog, type ConfirmRequest } from "./components/ConfirmDialog";
@@ -702,7 +702,7 @@ export function App() {
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">
-            <Layers2 size={20} />
+            <img src={otterLogo} className="otter-img" alt="" />
           </div>
           <span>
             GoHome<span className="brand-light">Buddy</span>
@@ -997,7 +997,7 @@ export function App() {
         {empty ? (
           <div className="hero">
             <div className="hero-mark">
-              <Layers2 size={30} strokeWidth={1.4} />
+              <img src={otterLogo} className="otter-img hero-otter" alt="" />
             </div>
             <h1>{greeting()}</h1>
             <p className="hero-tagline">Get work done. Go home earlier.</p>
@@ -1034,7 +1034,7 @@ export function App() {
                     ) : (
                       <>
                         <span className="agent-avatar">
-                          <Layers2 size={18} />
+                          <img src={otterLogo} className="otter-img" alt="" />
                         </span>
                         <div className="message-content">
                           <div className="message-label">

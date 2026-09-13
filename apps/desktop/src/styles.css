@@ -3014,3 +3014,21 @@ main {
   line-height: 15px;
   text-align: center;
 }
+
+/* 水獭品牌图（aitoys logo） */
+.otter-img {
+  display: block;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+}
+.brand-mark .otter-img {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+}
+.hero-otter {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+}
