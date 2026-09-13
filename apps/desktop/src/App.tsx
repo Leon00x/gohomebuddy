@@ -705,7 +705,7 @@ export function App() {
             <Layers2 size={20} />
           </div>
           <span>
-            Office<span className="brand-light"> Agent</span>
+            GoHome<span className="brand-light">Buddy</span>
           </span>
           <Button
             variant="ghost"
@@ -1000,6 +1000,7 @@ export function App() {
               <Layers2 size={30} strokeWidth={1.4} />
             </div>
             <h1>{greeting()}</h1>
+            <p className="hero-tagline">Get work done. Go home earlier.</p>
             <Composer
               {...composerCommon}
               hero
@@ -1037,7 +1038,7 @@ export function App() {
                         </span>
                         <div className="message-content">
                           <div className="message-label">
-                            Office Agent {mode === "preview" ? <span>预览</span> : undefined}
+                            GoHomeBuddy {mode === "preview" ? <span>预览</span> : undefined}
                           </div>
                           {/* running 只属于正在流式的那条消息，否则历史消息的过程面板会全部展开变"工作中" */}
                           <ActivityTimeline

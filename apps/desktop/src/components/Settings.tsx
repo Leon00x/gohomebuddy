@@ -205,8 +205,8 @@ export function Settings({
               );
             })}
             <div className="settings-version">
-              Office Agent
-              <br />0.1.0
+              GoHomeBuddy
+              <br />下班搭子 · 0.1.0
             </div>
           </div>
           <div className="settings-body">

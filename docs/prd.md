@@ -4,7 +4,8 @@
 日期：2026-09-11  
 状态：需求基线，待实施验证  
 范围依据：以用户最新确认的“好看的 UI + pi 基础能力”为准。  
-当前阶段：**第二阶段 P0 六项已完成、Codex 式执行过程已落地，P1 实施中**，见 [commercial-ui-prd.md](./commercial-ui-prd.md)。
+当前阶段：**第二阶段 P0 六项已完成、Codex 式执行过程已落地，P1 实施中**，见 [commercial-ui-prd.md](./commercial-ui-prd.md)。  
+产品更名（2026-09-13）：**Office Agent → GoHomeBuddy**（中文名：下班搭子；标语：Get work done. Go home earlier.），本文中历史处的"Office Agent"均指本产品。
 
 ## 1. 产品定位
 

@@ -16,7 +16,7 @@ import {
   Square,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "./Button";
 import { ModelMenu } from "./ModelMenu";
 import {
@@ -189,6 +189,9 @@ export function Composer({
   const [attachQuery, setAttachQuery] = useState("");
   const [wsFiles, setWsFiles] = useState<{ path: string }[] | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  // 放不下时才收敛为纯图标（模型名除外，始终显示）；能用文字就显示文字
+  const [compact, setCompact] = useState(false);
   useEffect(() => {
     const el = taRef.current;
     if (!el) return;
@@ -253,8 +256,22 @@ export function Composer({
     attachQuery.trim() ? f.path.toLowerCase().includes(attachQuery.trim().toLowerCase()) : true,
   );
 
+  useLayoutEffect(() => {
+    const el = toolbarRef.current;
+    if (!el) return;
+    const check = () => setCompact(el.scrollWidth > el.clientWidth + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    window.addEventListener("resize", check);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", check);
+    };
+  }, [providers, selection, workspaces, supportsReasoning]);
+
   return (
-    <div className={"composer " + (hero ? "composer-hero" : "")}>
+    <div className={"composer" + (hero ? " composer-hero" : "") + (compact ? " composer--compact" : "")}>
       {attachments && attachments.length > 0 && (
         <div className="composer-attachments">
           {attachments.map((path) => (
@@ -287,7 +304,7 @@ export function Composer({
           }
         }}
       />
-      <div className="composer-toolbar">
+      <div className="composer-toolbar" ref={toolbarRef}>
         <div>
           {showGroupSelector && (
             <div className="group-anchor">

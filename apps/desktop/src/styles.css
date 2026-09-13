@@ -2953,31 +2953,33 @@ main {
   overflow-y: auto;
 }
 
-/* ---- 窄屏：控制条收敛为纯图标，禁止竖排 ---- */
-.model-icon-narrow {
-  display: none;
-  color: var(--muted);
-}
-.composer-model .ctl-text {
-  max-width: 160px;
+/* ---- 控制条自适应：放不下时才收敛为纯图标（JS 测量溢出），模型名始终显示 ---- */
+.model-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 170px;
 }
-@media (max-width: 920px) {
-  .composer .group-select .ctl-text,
-  .composer .composer-model .ctl-text,
-  .composer .ctl-chev {
-    display: none;
-  }
-  .composer .model-icon-narrow {
-    display: inline-flex;
-  }
-  .composer-toolbar,
-  .composer-toolbar > div {
-    flex-wrap: nowrap;
-  }
-  .composer-toolbar > div {
-    min-width: 0;
-  }
+.composer--compact .group-select .ctl-text,
+.composer--compact .group-select .ctl-chev {
+  display: none;
+}
+.composer--compact .composer-model .ctl-text {
+  display: inline;
+  max-width: 120px;
+}
+.composer-toolbar,
+.composer-toolbar > div {
+  flex-wrap: nowrap;
+}
+.composer-toolbar > div {
+  min-width: 0;
+}
+
+/* 品牌标语（用户指定） */
+.hero-tagline {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  letter-spacing: 0.3px;
 }
