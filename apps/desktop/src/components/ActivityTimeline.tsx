@@ -60,8 +60,10 @@ export function ActivityTimeline({ msg, running }: { msg: UiMessage; running: bo
               const live = running && activity.durationSec === undefined;
               return <div className="act-row act-think" key={activity.id}>
                 <BrainCog size={13} className={live ? "spin-slow" : undefined} />
-                <span>{live ? "正在分析" : "已完成分析"}{activity.durationSec !== undefined ? ` · ${activity.durationSec} 秒` : ""}</span>
-                {live && <span className="think-raw">{activity.text.slice(-400)}</span>}
+                <span>
+                  思考{!live && activity.durationSec !== undefined ? ` · 持续了 ${activity.durationSec} 秒` : ""}
+                </span>
+                {live && activity.text.length > 0 && <span className="think-pulse">{activity.text.slice(-72)}</span>}
               </div>;
             }
             if (activity.kind === "tool") return <ToolCard step={activity.step} key={activity.id} />;

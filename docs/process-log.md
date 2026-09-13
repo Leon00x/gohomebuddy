@@ -4,6 +4,12 @@
 
 ---
 
+## 2026-09-13（执行过程细节打磨：动作图标 + 思考行改版）
+
+- **用户反馈**：①执行命令行也要有对应图标，所有动作都应有图标；②"分析"改叫"思考"，完成态显示"思考 · 持续了 x 秒"；思考过程不显示文本段，运行中为一行快速闪动内容（脉冲），参考 ZCode。
+- **改动**：ToolCard 状态点改为类型图标（读取=FileText、搜索=Search、编辑=Pencil、命令=Terminal；运行中脉冲、出错红）；ActivityTimeline 思考行改版并移除 think-raw 文本段预览；补上一直缺失的 `dot-pulse` keyframes（活动头运行圆点此前实际未动画）；顺带修复思考行图标文字叠行（tailwind preflight svg:block + 容器 display:block）。
+- **状态**：已完成，typecheck/build 通过，HMR 即时生效。
+
 ## 2026-09-13（P1 启动：控制栏附件 / Workspace 信息 / Header 运行信息 / Hover 体系）
 
 - **用户确认**：继续实施 commercial-ui-prd.md 已确认的 P1 四项，同时清掉两处 UI 规范违规。

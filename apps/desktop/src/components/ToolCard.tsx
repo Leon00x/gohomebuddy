@@ -1,6 +1,14 @@
-import { Check, ChevronDown, CircleAlert, LoaderCircle, Square } from "lucide-react";
+import { Check, ChevronDown, CircleAlert, FileText, LoaderCircle, Pencil, Search, Square, Terminal } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ToolStep } from "@office/contracts";
+
+/** 每类动作一个类型图标（UI 反馈：所有动作都应有图标）。 */
+const KIND_ICON: Record<ToolStep["kind"], typeof FileText> = {
+  read: FileText,
+  search: Search,
+  edit: Pencil,
+  shell: Terminal,
+};
 
 const ARG_LABELS: Record<string, string> = {
   path: "路径",
@@ -74,9 +82,10 @@ export function ToolCard({ step }: { step: ToolStep }) {
   return (
     <div className={"tool-card2 status-" + step.status}>
       <button className="tc-row" onClick={() => setCollapsed(!collapsed)}>
-        <span className="tc-dot">
-          {step.status === "running" && <i className="tc-pulse" />}
-        </span>
+        {(() => {
+          const Icon = KIND_ICON[step.kind] ?? Terminal;
+          return <Icon size={13} className="tc-icon" />;
+        })()}
         <span className="tc-label">{step.label}</span>
         <code className="tc-target">{step.target}</code>
         {diff && (
