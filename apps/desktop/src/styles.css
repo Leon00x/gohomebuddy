@@ -2513,6 +2513,7 @@ main {
   position: relative;
 }
 .perm-pop {
+  top: auto; /* session-menu 基础规则的 top:35px 会压过 bottom，必须显式清掉，否则菜单向下弹 */
   bottom: calc(100% + 6px);
   left: 0;
   width: 260px;
