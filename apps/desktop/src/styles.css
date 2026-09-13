@@ -2624,8 +2624,13 @@ main {
 }
 
 /* ---- thinking activity (ZCode-style inline muted stream) ---- */
+/* flex + wrap：图标与文字同行；流式预览（think-raw）以 flex-basis:100% 换行占满。
+   不能用 display:block——tailwind preflight 把 svg 设为 block，图标和文字会叠成两行。 */
 .act-row.act-think {
-  display: block;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
   color: var(--muted);
   font-size: 13px;
 }
@@ -2685,6 +2690,7 @@ main {
   margin-left: 6px;
 }
 .think-raw {
+  flex-basis: 100%;
   display: block;
   margin-top: 4px;
   font-size: 12.5px;
