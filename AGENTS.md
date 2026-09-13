@@ -13,7 +13,7 @@
 
 ## 项目概要
 
-基于 pi-coding-agent 的桌面个人 Agent（Tauri 2 + React + TypeScript + Node sidecar）。
+产品名 **GoHomeBuddy**（中文名：下班搭子，标语 "Get work done. Go home earlier."）：基于 pi-coding-agent 的桌面个人 Agent（Tauri 2 + React + TypeScript + Node sidecar）。
 产品形态与边界见 `docs/prd.md`、`docs/mvp-scope.md`；架构决策见 `docs/technical-architecture.md`；技术验证记录见 `docs/s0-validation.md`。
 
 ## 常用命令
