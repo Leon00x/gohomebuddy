@@ -222,6 +222,7 @@ export class PiRuntime {
     providerId?: string;
     modelId?: string;
     thinkingLevel?: string;
+    permissionMode?: string;
   }): Promise<string> {
     if (this.busy) throw Object.assign(new Error("已有任务在运行"), { code: "run_already_active" });
     if (!this.session) await this.newSession();
@@ -252,7 +253,7 @@ export class PiRuntime {
       this.emit("run.end", runId, payload);
     };
     void session
-      .prompt(params.prompt)
+      .prompt(this.withPermissionDirective(params.permissionMode, params.prompt))
       .then(() => {
         if (this.cancelRequested) return finish("aborted");
         // pi reports request failures as a terminal assistant message with
@@ -387,6 +388,19 @@ export class PiRuntime {
     this.session?.dispose();
     this.session = null;
     this.modelRuntime = null;
+  }
+
+  /** 按权限档位生成注入 prompt 的行为指令（提示词级约束；引擎尚无硬审批钩子）。 */
+  private withPermissionDirective(mode: string | undefined, prompt: string): string {
+    const directives: Record<string, string> = {
+      ask: "[权限模式：变更前确认] 只能直接执行读取、查看、搜索类操作；创建、修改、删除文件和执行任何命令前，必须先说明具体操作内容并等待用户回复确认，未经确认不得执行。",
+      auto_edit:
+        "[权限模式：自动编辑] 可以直接创建和修改工作空间内的文件；执行命令前先用一句话说明要做什么；不得删除文件或执行与任务无关的命令。",
+      full_access:
+        "[权限模式：完全访问] 直接执行完成任务所需的全部本地操作，无需逐步确认；保持操作与任务相关，不做破坏性清理。",
+    };
+    const directive = mode ? directives[mode] : undefined;
+    return directive ? `${directive}\n\n${prompt}` : prompt;
   }
 
   private onSessionEvent(runId: string, event: Record<string, unknown>): void {

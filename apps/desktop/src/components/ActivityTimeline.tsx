@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 import type { UiActivity, UiMessage } from "../App";
 import { StreamingMarkdown } from "./StreamingMarkdown";
 import { ToolCard } from "./ToolCard";
-
 function formatDuration(seconds: number | undefined): string {
   if (seconds === undefined) return "";
   if (seconds < 60) return `${seconds} 秒`;
@@ -15,6 +14,7 @@ function formatDuration(seconds: number | undefined): string {
 /** Codex 式过程区：运行中展开，完成后折叠，正式回答由父组件渲染在下方。 */
 export function ActivityTimeline({ msg, running }: { msg: UiMessage; running: boolean }) {
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
+  const [openThink, setOpenThink] = useState<Set<string>>(new Set());
   const [now, setNow] = useState(Date.now());
   const failedOrStopped = msg.runStatus === "failed" || msg.runStatus === "stopped" || Boolean(msg.error);
   const expanded = running ? true : expandedOverride ?? failedOrStopped;
@@ -24,6 +24,15 @@ export function ActivityTimeline({ msg, running }: { msg: UiMessage; running: bo
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [running]);
+
+  function toggleThink(id: string) {
+    setOpenThink((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   const finalTextId = useMemo(
     () => [...msg.activities].reverse().find((activity) => activity.kind === "text")?.id,
@@ -58,13 +67,27 @@ export function ActivityTimeline({ msg, running }: { msg: UiMessage; running: bo
           {processActivities.map((activity: UiActivity) => {
             if (activity.kind === "thinking") {
               const live = running && activity.durationSec === undefined;
-              return <div className="act-row act-think" key={activity.id}>
-                <BrainCog size={13} className={live ? "spin-slow" : undefined} />
-                <span>
-                  思考{!live && activity.durationSec !== undefined ? ` · 持续了 ${activity.durationSec} 秒` : ""}
-                </span>
-                {live && activity.text.length > 0 && <span className="think-pulse">{activity.text.slice(-72)}</span>}
-              </div>;
+              const hasText = activity.text.length > 0;
+              const open = openThink.has(activity.id);
+              return (
+                <div key={activity.id}>
+                  <div
+                    className={"act-row act-think" + (hasText ? " clickable" : "")}
+                    onClick={hasText ? () => toggleThink(activity.id) : undefined}
+                    role={hasText ? "button" : undefined}
+                    aria-expanded={hasText ? open : undefined}
+                    title={hasText ? (open ? "收起思考内容" : "展开思考内容") : undefined}
+                  >
+                    <BrainCog size={13} className={live ? "spin-slow" : undefined} />
+                    <span>
+                      思考{!live && activity.durationSec !== undefined ? ` · 持续了 ${activity.durationSec} 秒` : ""}
+                    </span>
+                    {live && !open && hasText && <span className="think-pulse">{activity.text.slice(-72)}</span>}
+                    {hasText && <ChevronDown size={12} className={"tc-chev think-chev" + (open ? "" : " closed")} />}
+                  </div>
+                  {open && hasText && <div className="think-raw">{activity.text}</div>}
+                </div>
+              );
             }
             if (activity.kind === "tool") return <ToolCard step={activity.step} key={activity.id} />;
             return <div className="act-text" key={activity.id}>

@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Settings2 } from "lucide-react";
+import { Check, ChevronDown, Cpu, Settings2 } from "lucide-react";
 import { useState } from "react";
 import type { CatalogProvider } from "@office/contracts";
 import type { ModelSelection } from "../lib/protocol-client";
@@ -43,8 +43,9 @@ export function ModelMenu({
         onClick={() => setOpen(!open)}
         aria-label="选择模型"
       >
-        {label}
-        <ChevronDown size={12} />
+        <Cpu size={14} className="model-icon-narrow" />
+        <span className="ctl-text">{label}</span>
+        <ChevronDown size={12} className="ctl-chev" />
       </button>
       {open && (
         <>

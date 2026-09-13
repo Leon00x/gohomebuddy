@@ -3,11 +3,15 @@ import {
   BrainCog,
   Check,
   ChevronDown,
+  Cpu,
   FileText,
   Folder,
+  Hand,
   Paperclip,
   Plus,
   RotateCcw,
+  ShieldAlert,
+  ShieldCheck,
   Shield,
   Square,
   X,
@@ -31,6 +35,13 @@ export interface WorkspaceOption {
 export const UNGROUPED = "__ungrouped__";
 
 const DEFAULT_LEVEL = "medium";
+
+/** 权限模式分档图标（参考 ZCode）：询问=手势、自动编辑=盾勾、完全访问=盾叹号（橘红）。 */
+const PERM_ICON: Record<string, typeof Shield> = {
+  ask: Hand,
+  auto_edit: ShieldCheck,
+  full_access: ShieldAlert,
+};
 
 /** 思考强度滑杆：档位间平滑滑动，点按或拖拽换挡。 */
 function EffortSlider({
@@ -289,8 +300,8 @@ export function Composer({
                 }}
               >
                 <Folder size={14} />
-                {groupName}
-                <ChevronDown size={12} />
+                <span className="ctl-text">{groupName}</span>
+                <ChevronDown size={12} className="ctl-chev" />
               </button>
               {groupMenu && (
                 <div className="session-menu group-menu">
@@ -386,29 +397,36 @@ export function Composer({
               }}
               title="Agent 权限模式"
             >
-              <Shield size={13} />
-              {perm.short}
+              {(() => {
+                const PermIcon = PERM_ICON[perm.id] ?? Shield;
+                return <PermIcon size={13} />;
+              })()}
+              <span className="ctl-text">{perm.short}</span>
             </button>
             {permPop && (
               <>
                 <div className="menu-overlay" onClick={() => setPermPop(false)} />
                 <div className="session-menu perm-pop">
-                  {PERMISSION_MODES.map((m) => (
-                    <button
-                      key={m.id}
-                      className={m.id === perm.id ? "current" : ""}
-                      onClick={() => {
-                        onPermissionMode?.(m.id);
-                        setPermPop(false);
-                      }}
-                    >
-                      <span className={"perm-dot perm-" + m.id} />
-                      <span className="perm-item">
-                        <b>{m.label}</b>
-                        <small>{m.desc}</small>
-                      </span>
-                    </button>
-                  ))}
+                  {PERMISSION_MODES.map((m) => {
+                    const ModeIcon = PERM_ICON[m.id] ?? Shield;
+                    return (
+                      <button
+                        key={m.id}
+                        className={m.id === perm.id ? "current" : ""}
+                        onClick={() => {
+                          onPermissionMode?.(m.id);
+                          setPermPop(false);
+                        }}
+                      >
+                        <ModeIcon size={15} className={"perm-icon perm-" + m.id} />
+                        <span className="perm-item">
+                          <b>{m.label}</b>
+                          <small>{m.desc}</small>
+                        </span>
+                        {m.id === perm.id && <Check size={14} className="perm-check" />}
+                      </button>
+                    );
+                  })}
                 </div>
               </>
             )}
@@ -424,8 +442,8 @@ export function Composer({
                 }}
               >
                 <BrainCog size={14} />
-                {currentLevel.label}
-                <ChevronDown size={12} />
+                <span className="ctl-text">{currentLevel.label}</span>
+                <ChevronDown size={12} className="ctl-chev" />
               </button>
               {thinkingPop && (
                 <>

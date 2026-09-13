@@ -191,6 +191,8 @@ export interface RunStartParams {
   modelId?: string;
   /** pi ThinkingLevel: off | minimal | low | medium | high | xhigh | max */
   thinkingLevel?: string;
+  /** ask | auto_edit | full_access；引擎按档位注入相应权限指令 */
+  permissionMode?: string;
 }
 
 export type RunEndReason = "completed" | "aborted" | "error";

@@ -44,6 +44,7 @@ export class SidecarServer {
         providerId: optionalString(p, "providerId"),
         modelId: optionalString(p, "modelId"),
         thinkingLevel: optionalString(p, "thinkingLevel"),
+        permissionMode: optionalString(p, "permissionMode"),
       }),
     );
     this.handlers.set("run.followUp", (p) =>

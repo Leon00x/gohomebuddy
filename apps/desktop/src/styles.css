@@ -2508,23 +2508,41 @@ main {
 }
 
 /* ---- permission mode ---- */
+/* ---- permission mode（分档图标：询问=手势 自动编辑=盾勾 完全访问=盾叹号橘红） ---- */
 .perm-anchor {
   position: relative;
 }
 .perm-pop {
   bottom: calc(100% + 6px);
   left: 0;
-  width: 250px;
+  width: 260px;
   z-index: 41;
   animation: effort-pop-in 0.16s cubic-bezier(0.2, 0.9, 0.3, 1.1);
 }
 .perm-pop button {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 9px;
 }
 .perm-pop button.current {
   background: var(--soft);
+}
+.perm-icon {
+  margin-top: 1px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.perm-icon.perm-auto_edit {
+  color: var(--accent);
+}
+.perm-icon.perm-full_access {
+  color: var(--warning);
+}
+.perm-check {
+  margin-left: auto;
+  align-self: center;
+  color: var(--accent);
+  flex-shrink: 0;
 }
 .perm-item {
   display: flex;
@@ -2539,44 +2557,13 @@ main {
   font-size: 11px;
   color: var(--muted);
 }
-.perm-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  margin-top: 5px;
-  flex-shrink: 0;
+.group-select.perm-auto_edit {
+  color: var(--accent);
 }
-.perm-dot.perm-ask {
-  background: var(--muted);
+.group-select.perm-full_access {
+  color: var(--warning);
+  font-weight: 500;
 }
-.perm-dot.perm-auto_edit {
-  background: var(--warning);
-}
-.perm-dot.perm-full_access {
-  background: var(--danger);
-}
-.group-select.perm-ask {
-  color: var(--muted);
-}
-
-/* ---- permission mode ---- */
-.perm-anchor { position: relative; }
-.perm-pop {
-  bottom: calc(100% + 6px);
-  left: 0;
-  width: 252px;
-  z-index: 41;
-  animation: effort-pop-in 0.16s cubic-bezier(0.2, 0.9, 0.3, 1.1);
-}
-.perm-pop button { display: flex; align-items: flex-start; gap: 8px; }
-.perm-pop button.current { background: var(--soft); }
-.perm-item { display: flex; flex-direction: column; gap: 1px; }
-.perm-item b { font-size: 12.5px; font-weight: 500; }
-.perm-item small { font-size: 11px; color: var(--muted); }
-.perm-dot { width: 7px; height: 7px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
-.perm-dot.perm-ask { background: var(--muted); }
-.perm-dot.perm-auto_edit { background: var(--warning); }
-.perm-dot.perm-full_access { background: var(--danger); }
 
 /* ---- stopped/failed message actions ---- */
 .msg-actions {
@@ -2933,4 +2920,64 @@ main {
 .artifact-card:hover {
   background: var(--bg);
   border-color: #d5dcd2;
+}
+
+/* ---- 思考行可展开（完成态点击查看思考内容） ---- */
+.act-row.act-think.clickable {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 2px 4px;
+  margin: 0 -4px;
+}
+.act-row.act-think.clickable:hover {
+  background: var(--hover);
+}
+.think-chev {
+  color: var(--muted);
+  flex-shrink: 0;
+  transition: transform 0.18s ease;
+}
+.think-chev.closed {
+  transform: rotate(-90deg);
+}
+.think-raw {
+  margin: 2px 0 4px 19px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--line);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+/* ---- 窄屏：控制条收敛为纯图标，禁止竖排 ---- */
+.model-icon-narrow {
+  display: none;
+  color: var(--muted);
+}
+.composer-model .ctl-text {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 920px) {
+  .composer .group-select .ctl-text,
+  .composer .composer-model .ctl-text,
+  .composer .ctl-chev {
+    display: none;
+  }
+  .composer .model-icon-narrow {
+    display: inline-flex;
+  }
+  .composer-toolbar,
+  .composer-toolbar > div {
+    flex-wrap: nowrap;
+  }
+  .composer-toolbar > div {
+    min-width: 0;
+  }
 }

@@ -411,6 +411,7 @@ export function App() {
           providerId: selection.providerId || undefined,
           modelId: selection.modelId || undefined,
           thinkingLevel: effectiveThinking,
+          permissionMode,
         });
         const runId = typeof started === "string" ? started : (started as { runId?: string })?.runId;
         if (runId) {
