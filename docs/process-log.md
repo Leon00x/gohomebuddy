@@ -4,6 +4,16 @@
 
 ---
 
+## 2026-09-14（引擎随包分发：安装包自包含，用户确认）
+
+- **用户需求**：安装包"打包在一起"——用户机器无需 Node、无需仓库即可运行完整 Agent 链路（M10 桌面交付核心）。
+- **方案（已确认）**：
+  1. 引擎单文件化：esbuild 将 sidecar（含 pi SDK 及全部依赖）打成单 bundle，Node 22 SEA（Single Executable Application）封装为独立可执行文件 `gohomebuddy-engine`；pi 以 npm 依赖锁定版本，不进仓库、不 fork。
+  2. Tauri 随包：`externalBin` 按 target triple 携带引擎二进制；`main.rs` 重写——启动 spawn 随包引擎，Rust 内实现 stdio↔WebSocket 桥（127.0.0.1:1421，协议/前端零改动），替换现依赖开发机路径与系统 Node 的 node 桥；修复启动 panic。
+  3. CI：矩阵各平台自建引擎二进制（SEA 不支持跨平台）后再打安装包。
+- **已知代价**：安装包体积从 ~3MB 涨到 50MB+（Node runtime 占大头）；pi 依赖树如有原生扩展需额外随包（风险验证第一步确认）。
+- **状态**：实施中，从风险验证（本地 SEA 打包 + 冒烟）开始。
+
 ## 2026-09-13（v0.1.0 开发预览 Release）
 
 - **用户反馈**：GitHub 上看不到任何 Release。原因：此前流水线只上传 run artifact，没有发布逻辑。

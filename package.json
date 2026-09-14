@@ -16,5 +16,9 @@
     "desktop": "npm run tauri -w @office/desktop -- dev",
     "sidecar": "npm run build -w @office/sidecar && node apps/sidecar/dist/index.js",
     "smoke": "npm run build -w @office/contracts && npm run smoke -w @office/sidecar"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "postject": "^1.0.0-alpha.6"
   }
 }

@@ -36,7 +36,7 @@
 | Markdown | react-markdown + remark-gfm | 保持代码和表格可读，默认禁用原始 HTML |
 | 代码高亮 | 按需 Shiki | 限制语言包并缓存；不在每个 token 更新时全量高亮 |
 | Agent | pi-coding-agent SDK | 复用会话、执行、上下文、工具与扩展接口 |
-| Sidecar | 随包携带 Node + 编译后的 TS | 保留动态扩展兼容性；先稳定再评估单文件打包 |
+| Sidecar | esbuild 单文件 bundle + Node SEA 独立可执行，随安装包分发（2026-09-14 决策，替代"随包携带 Node"） | 用户免装 Node；动态扩展兼容性受限，以单文件自包含优先 |
 | 结构化数据 | SQLite，经 repository 层访问 | 本地事务、迁移和未来 Office 数据；MVP 只建实际需要的表 |
 | SQLite 驱动 | 优先验证所选 Node LTS 的 node:sqlite | 减少额外原生模块；若验证失败单独记录 ADR 并采用打包通过的替代驱动 |
 | 凭证 | Rust 接系统 credential store | Windows Credential Manager / Ubuntu Secret Service；不落普通配置 |

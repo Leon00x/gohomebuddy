@@ -10,38 +10,43 @@ function resolveDir(value: string | undefined, fallback: string): string {
   return nodePath.resolve(raw.startsWith("~") ? raw.replace("~", process.env.HOME ?? "") : raw);
 }
 
-// Isolate every pi default path (sessions, auth.json, models.json, settings)
-// under the app-owned agent dir. pi reads this env var lazily via getAgentDir().
-process.env.PI_CODING_AGENT_DIR = resolveDir(
-  arg("--agent-dir"),
-  nodePath.join(process.env.HOME ?? "", ".office-agent", "pi"),
-);
-const agentDir = process.env.PI_CODING_AGENT_DIR;
-const cwd = resolveDir(arg("--cwd"), process.cwd());
+// 延迟加载引擎：必须先把 PI_CODING_AGENT_DIR 固定好，某些依赖在模块初始化时
+// 就解析全局路径。入口不能使用顶层 await——SEA/esbuild 的 CJS 产物不支持。
+async function main(): Promise<void> {
+  process.env.PI_CODING_AGENT_DIR = resolveDir(
+    arg("--agent-dir"),
+    nodePath.join(process.env.HOME ?? "", ".office-agent", "pi"),
+  );
+  const agentDir = process.env.PI_CODING_AGENT_DIR;
+  const cwd = resolveDir(arg("--cwd"), process.cwd());
 
-// Load the engine only after its data directory is fixed. Some dependencies
-// resolve global paths during module initialization.
-const [{ PiRuntime }, { SidecarServer }] = await Promise.all([
-  import("./runtime.js"),
-  import("./server.js"),
-]);
+  const [{ PiRuntime }, { SidecarServer }] = await Promise.all([
+    import("./runtime.js"),
+    import("./server.js"),
+  ]);
 
-const runtime = new PiRuntime({
-  agentDir,
-  cwd,
-  emit: (type, runId, payload) => server.emit(type, runId, payload),
+  const runtime = new PiRuntime({
+    agentDir,
+    cwd,
+    emit: (type, runId, payload) => server.emit(type, runId, payload),
+  });
+  const server = new SidecarServer(runtime);
+
+  process.on("uncaughtException", (err) => {
+    server.log("error", `未捕获异常: ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
+  });
+  process.on("unhandledRejection", (reason) => {
+    server.log("error", `未处理的 Promise 拒绝: ${reason instanceof Error ? reason.message : String(reason)}`);
+  });
+
+  server.listen();
+  void runtime
+    .handshake()
+    .then(() => server.log("info", `sidecar 就绪 path=${agentDir} cwd=${cwd}`))
+    .catch((err) => server.log("error", `初始化失败: ${err instanceof Error ? err.message : String(err)}`));
+}
+
+void main().catch((err) => {
+  process.stderr.write(`启动失败: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
+  process.exit(1);
 });
-const server = new SidecarServer(runtime);
-
-process.on("uncaughtException", (err) => {
-  server.log("error", `未捕获异常: ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
-});
-process.on("unhandledRejection", (reason) => {
-  server.log("error", `未处理的 Promise 拒绝: ${reason instanceof Error ? reason.message : String(reason)}`);
-});
-
-server.listen();
-void runtime
-  .handshake()
-  .then(() => server.log("info", `sidecar 就绪 path=${agentDir} cwd=${cwd}`))
-  .catch((err) => server.log("error", `初始化失败: ${err instanceof Error ? err.message : String(err)}`));

@@ -6,3 +6,6 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "process", "sync", "time"] }
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
