@@ -154,6 +154,7 @@ export function Composer({
   onPermissionMode,
   attachments,
   attachmentThumbs,
+  attachmentNames,
   onToggleAttachment,
   onImportFiles,
   importingFiles,
@@ -183,6 +184,7 @@ export function Composer({
   onPermissionMode?: (v: PermissionMode) => void;
   attachments?: string[];
   attachmentThumbs?: Record<string, string>;
+  attachmentNames?: Record<string, string>;
   onToggleAttachment?: (path: string) => void;
   onImportFiles?: (files: File[]) => Promise<void> | void;
   importingFiles?: boolean;
@@ -315,6 +317,7 @@ export function Composer({
           {attachments.map((path) => {
             const thumb = attachmentThumbs?.[path];
             const Icon = iconFor(path);
+            const label = attachmentNames?.[path] ?? path.split("/").pop() ?? path;
             return (
               <span className="attach-chip" key={path} title={path}>
                 {thumb ? (
@@ -322,7 +325,7 @@ export function Composer({
                 ) : (
                   <Icon size={12} />
                 )}
-                <span>{path}</span>
+                <span>{label}</span>
                 <button aria-label={`移除引用 ${path}`} onClick={() => onToggleAttachment?.(path)}>
                   <X size={12} />
                 </button>

@@ -211,4 +211,6 @@ export interface RunEndPayload {
 export interface FsImportResult {
   /** 工作空间内相对路径（.attachments/ 下） */
   path: string;
+  /** 净化后的原始文件名（展示用） */
+  name: string;
 }

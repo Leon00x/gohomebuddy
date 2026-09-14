@@ -314,7 +314,7 @@ export class PiRuntime {
    * 导入用户系统文件：base64 内容落到工作空间 .attachments/ 下（文件名净化、
    * 50MB 上限），返回工作空间相对路径，供引擎按路径读取。
    */
-  async importFile(name: string, dataBase64: string): Promise<{ path: string }> {
+  async importFile(name: string, dataBase64: string): Promise<{ path: string; name: string }> {
     const { mkdir, writeFile } = await import("node:fs/promises");
     const clean =
       nodePath
@@ -326,10 +326,23 @@ export class PiRuntime {
     if (buf.length > 50 * 1024 * 1024) throw new Error("附件超过 50MB 上限");
     const dir = nodePath.join(this.cwd, ".attachments");
     await mkdir(dir, { recursive: true });
-    const fileName = `${Date.now().toString(36)}-${clean}`;
+    // 重名自动加序号，保持文件名干净（展示直接用原名）
+    const ext = nodePath.extname(clean);
+    const base = clean.slice(0, clean.length - ext.length) || "file";
+    let fileName = clean;
+    let i = 1;
+    while (
+      await import("node:fs/promises")
+        .then((m) => m.stat(nodePath.join(dir, fileName)))
+        .then(() => true)
+        .catch(() => false)
+    ) {
+      fileName = `${base}-${i++}${ext}`;
+    }
     await writeFile(nodePath.join(dir, fileName), buf);
     return {
       path: nodePath.relative(this.cwd, nodePath.join(dir, fileName)).split(nodePath.sep).join("/"),
+      name: clean,
     };
   }
 

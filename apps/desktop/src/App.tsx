@@ -67,6 +67,7 @@ export function App() {
   const [showJump, setShowJump] = useState(false);
   const [attachments, setAttachments] = useState<string[]>([]);
   const [attachmentThumbs, setAttachmentThumbs] = useState<Record<string, string>>({});
+  const [attachmentNames, setAttachmentNames] = useState<Record<string, string>>({});
   const [importingFiles, setImportingFiles] = useState(false);
   const [importError, setImportError] = useState("");
   const attachmentThumbsRef = useRef<Record<string, string>>({});
@@ -565,7 +566,8 @@ export function App() {
         const res = (await client.current.request("fs.import", {
           name: file.name,
           dataBase64,
-        })) as { path: string };
+        })) as { path: string; name: string };
+        setAttachmentNames((n) => ({ ...n, [res.path]: res.name }));
         if (isImagePath(file.name) || file.type.startsWith("image/")) {
           const url = URL.createObjectURL(file);
           attachmentThumbsRef.current[res.path] = url;
@@ -602,6 +604,7 @@ export function App() {
     },
     onImportFiles: importSystemFiles,
     attachmentThumbs,
+    attachmentNames,
     importingFiles,
     importError,
     onClearImportError: () => setImportError(""),
