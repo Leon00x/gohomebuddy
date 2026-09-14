@@ -66,8 +66,17 @@ export function App() {
   );
   const [showJump, setShowJump] = useState(false);
   const [attachments, setAttachments] = useState<string[]>([]);
+  const [attachmentThumbs, setAttachmentThumbs] = useState<Record<string, string>>({});
   const [importingFiles, setImportingFiles] = useState(false);
   const [importError, setImportError] = useState("");
+  const attachmentThumbsRef = useRef<Record<string, string>>({});
+  function revokeThumb(path: string) {
+    const url = attachmentThumbsRef.current[path];
+    if (url) {
+      URL.revokeObjectURL(url);
+      delete attachmentThumbsRef.current[path];
+    }
+  }
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [wsPop, setWsPop] = useState(false);
 
@@ -333,7 +342,12 @@ export function App() {
         ? `\n\n[引用工作空间文件，按需读取，不要整段粘贴进回答：\n${attachments.map((p) => "- " + p).join("\n")}]`
         : "";
     const promptText = text + refBlock;
-    if (refBlock) setAttachments([]);
+    if (refBlock) {
+      setAttachments((all) => {
+        all.forEach(revokeThumb);
+        return [];
+      });
+    }
     const mid = crypto.randomUUID();
     setDraft("");
     follow.current = true;
@@ -552,6 +566,11 @@ export function App() {
           name: file.name,
           dataBase64,
         })) as { path: string };
+        if (isImagePath(file.name) || file.type.startsWith("image/")) {
+          const url = URL.createObjectURL(file);
+          attachmentThumbsRef.current[res.path] = url;
+          setAttachmentThumbs((t) => ({ ...t, [res.path]: url }));
+        }
         setAttachments((all) => (all.includes(res.path) ? all : [...all, res.path]));
       }
     } catch (err) {
@@ -577,11 +596,12 @@ export function App() {
     permissionMode,
     onPermissionMode: setPermissionMode,
     attachments,
-    onToggleAttachment: (path: string) =>
-      setAttachments((all) =>
-        all.includes(path) ? all.filter((p) => p !== path) : [...all, path],
-      ),
+    onToggleAttachment: (path: string) => {
+      revokeThumb(path);
+      setAttachments((all) => all.filter((p) => p !== path));
+    },
     onImportFiles: importSystemFiles,
+    attachmentThumbs,
     importingFiles,
     importError,
     onClearImportError: () => setImportError(""),
@@ -1472,6 +1492,11 @@ function finalAnswer(m: UiMessage): string {
     if (a.kind === "text") return a.text;
   }
   return "";
+}
+
+function isImagePath(name: string): boolean {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  return ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif"].includes(ext);
 }
 
 /** ArrayBuffer → base64（分块避免 String.fromCharCode 爆栈）。 */

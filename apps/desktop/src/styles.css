@@ -3110,3 +3110,12 @@ main {
 .attach-path-btn:hover {
   background: var(--hover);
 }
+
+/* 引用标签缩略图 */
+.attach-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+}

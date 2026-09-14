@@ -3,7 +3,11 @@ import {
   BrainCog,
   Check,
   ChevronDown,
+  FileArchive,
+  FileImage,
+  FileSpreadsheet,
   FileText,
+  FileVideo,
   Folder,
   Hand,
   Plus,
@@ -149,6 +153,7 @@ export function Composer({
   permissionMode,
   onPermissionMode,
   attachments,
+  attachmentThumbs,
   onToggleAttachment,
   onImportFiles,
   importingFiles,
@@ -177,6 +182,7 @@ export function Composer({
   permissionMode?: PermissionMode;
   onPermissionMode?: (v: PermissionMode) => void;
   attachments?: string[];
+  attachmentThumbs?: Record<string, string>;
   onToggleAttachment?: (path: string) => void;
   onImportFiles?: (files: File[]) => Promise<void> | void;
   importingFiles?: boolean;
@@ -241,6 +247,19 @@ export function Composer({
     onToggleAttachment?.(path);
   }
 
+  const ICON_BY_EXT: Record<string, typeof FileText> = {
+    png: FileImage, jpg: FileImage, jpeg: FileImage, gif: FileImage,
+    webp: FileImage, bmp: FileImage, svg: FileImage, avif: FileImage,
+    zip: FileArchive, rar: FileArchive, "7z": FileArchive, tar: FileArchive, gz: FileArchive,
+    csv: FileSpreadsheet, xlsx: FileSpreadsheet, xls: FileSpreadsheet,
+    mp4: FileVideo, mov: FileVideo, avi: FileVideo, mkv: FileVideo, webm: FileVideo,
+    pdf: FileText,
+  };
+  function iconFor(path: string): typeof FileText {
+    const ext = path.split(".").pop()?.toLowerCase() ?? "";
+    return ICON_BY_EXT[ext] ?? FileText;
+  }
+
   function handlePickedFiles(files: FileList | null) {
     if (!files?.length || !onImportFiles) return;
     onImportFiles(Array.from(files));
@@ -293,15 +312,23 @@ export function Composer({
       />
       {attachments && attachments.length > 0 && (
         <div className="composer-attachments">
-          {attachments.map((path) => (
-            <span className="attach-chip" key={path} title={path}>
-              <FileText size={12} />
-              <span>{path}</span>
-              <button aria-label={`移除引用 ${path}`} onClick={() => onToggleAttachment?.(path)}>
-                <X size={12} />
-              </button>
-            </span>
-          ))}
+          {attachments.map((path) => {
+            const thumb = attachmentThumbs?.[path];
+            const Icon = iconFor(path);
+            return (
+              <span className="attach-chip" key={path} title={path}>
+                {thumb ? (
+                  <img className="attach-thumb" src={thumb} alt="" />
+                ) : (
+                  <Icon size={12} />
+                )}
+                <span>{path}</span>
+                <button aria-label={`移除引用 ${path}`} onClick={() => onToggleAttachment?.(path)}>
+                  <X size={12} />
+                </button>
+              </span>
+            );
+          })}
         </div>
       )}
       {importError ? (
