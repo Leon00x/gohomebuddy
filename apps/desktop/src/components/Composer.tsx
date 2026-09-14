@@ -198,6 +198,8 @@ export function Composer({
   const toolbarRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  const [pathInputOpen, setPathInputOpen] = useState(false);
+  const [pathDraft, setPathDraft] = useState("");
   // 放不下时才收敛为纯图标（模型名除外，始终显示）；能用文字就显示文字
   const [compact, setCompact] = useState(false);
   useEffect(() => {
@@ -263,6 +265,16 @@ export function Composer({
   function handlePickedFiles(files: FileList | null) {
     if (!files?.length || !onImportFiles) return;
     onImportFiles(Array.from(files));
+    setAttachPop(false);
+  }
+
+  /** 按路径直接引用本地文件：引擎在本机以用户权限读取，无需复制内容 */
+  function confirmPath() {
+    const p = pathDraft.trim();
+    if (!p) return;
+    if (!attachments?.includes(p)) onToggleAttachment?.(p);
+    setPathInputOpen(false);
+    setPathDraft("");
     setAttachPop(false);
   }
 
@@ -420,11 +432,47 @@ export function Composer({
                     <button
                       className="attach-import"
                       disabled={importingFiles}
+                      title="部分内嵌浏览器不支持弹出系统选择框，可用下方「输入路径添加」"
                       onClick={() => fileInputRef.current?.click()}
                     >
                       <FileText size={14} />
                       {importingFiles ? "正在导入…" : "选择系统文件…"}
                     </button>
+                    {pathInputOpen ? (
+                      <div className="menu-input-row">
+                        <input
+                          autoFocus
+                          value={pathDraft}
+                          placeholder="输入文件路径，如 /home/you/report.pdf"
+                          onChange={(e) => setPathDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && pathDraft.trim()) confirmPath();
+                            if (e.key === "Escape") {
+                              setPathInputOpen(false);
+                              setPathDraft("");
+                            }
+                          }}
+                        />
+                        <button
+                          className="mi-ok"
+                          aria-label="确认"
+                          disabled={!pathDraft.trim()}
+                          onClick={() => pathDraft.trim() && confirmPath()}
+                        >
+                          <Check size={13} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="attach-path-btn"
+                        onClick={() => {
+                          setPathInputOpen(true);
+                          setPathDraft("");
+                        }}
+                      >
+                        输入路径添加…
+                      </button>
+                    )}
                     <div className="attach-divider">或从工作空间选择</div>
                     <input
                       value={attachQuery}
