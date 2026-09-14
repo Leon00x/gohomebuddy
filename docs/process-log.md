@@ -4,6 +4,13 @@
 
 ---
 
+## 2026-09-13（v0.1.0 开发预览 Release）
+
+- **用户反馈**：GitHub 上看不到任何 Release。原因：此前流水线只上传 run artifact，没有发布逻辑。
+- **改动**：build.yml 增加 `release` 作业（`v*` 标签触发时汇总四平台安装包并创建 GitHub Release）；首版 `v0.1.0` 标签已发布。
+- **踩坑**：download-artifact 合并落盘时保留了 artifact 内的子目录（deb/、msi/、dmg/），softprops 的单层 glob `dist/*` 匹配不到文件，作业却仍以成功退出，产生了一个空 Release——已改 `dist/**` 递归匹配并加产物清单步骤；本次 v0.1.0 的安装包由本地从 run artifact 下载后用 `gh release upload` 补挂（零 CI 消耗），后续标签走修复后的自动发布。
+- **结果**：Release v0.1.0（开发预览）含 amd64.deb / x64_en-US.msi / aarch64.dmg / x64.dmg 四个安装包（2.9–4.6MB，含水獭图标）。
+
 ## 2026-09-13（品牌图标：aitoys 水獭 logo）
 
 - **用户需求**：使用本地 aitoys 项目的水獭 logo 作为产品图标。
