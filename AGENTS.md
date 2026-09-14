@@ -21,7 +21,7 @@
 ```sh
 npm run start     # 一键启动：vite(1420) + bridge + sidecar
 npm run dev       # 仅 vite（无引擎时自动预览模式）
-npm run smoke     # sidecar 协议冒烟（13 项，无需 API Key）
+npm run smoke     # sidecar 协议冒烟（14 项，无需 API Key）
 npm run build     # 类型检查 + 生产构建
 OFFICE_AGENT_ROOT=$PWD npm run tauri -w @office/desktop -- build   # 打包 deb
 ```

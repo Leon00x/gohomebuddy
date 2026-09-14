@@ -3032,3 +3032,63 @@ main {
   height: 56px;
   border-radius: 16px;
 }
+
+/* ---- 附件：系统文件导入 + 拖拽 + 统计行 ---- */
+.attach-file-input {
+  display: none;
+}
+.attach-import {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 6px;
+  background: var(--soft);
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: left;
+}
+.attach-import:hover {
+  filter: brightness(0.98);
+}
+.attach-import:disabled {
+  opacity: 0.6;
+}
+.attach-divider {
+  margin: 6px 8px 4px;
+  font-size: 10.5px;
+  color: var(--muted);
+  letter-spacing: 0.4px;
+}
+.attach-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #c2554e14;
+  color: var(--danger);
+  font-size: 12px;
+}
+.attach-error button {
+  display: inline-flex;
+  padding: 2px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+}
+.composer--dragging {
+  outline: 2px dashed var(--accent);
+  outline-offset: -3px;
+}
+.msg-stats {
+  display: flex;
+  gap: 12px;
+  margin: 6px 0 2px;
+  font-size: 11.5px;
+  color: var(--muted);
+}

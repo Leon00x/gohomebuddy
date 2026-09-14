@@ -66,6 +66,8 @@ export function App() {
   );
   const [showJump, setShowJump] = useState(false);
   const [attachments, setAttachments] = useState<string[]>([]);
+  const [importingFiles, setImportingFiles] = useState(false);
+  const [importError, setImportError] = useState("");
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [wsPop, setWsPop] = useState(false);
 
@@ -300,6 +302,7 @@ export function App() {
             role: string;
             text: string;
             thinking?: string;
+            tokens?: number;
             tools?: { id: string; toolName: string; args: unknown; output: string; isError: boolean }[];
           }[];
         };
@@ -537,6 +540,27 @@ export function App() {
     : false;
   const effectiveThinking = supportsReasoning ? selection.thinkingLevel ?? "medium" : undefined;
 
+  /** 系统文件导入：读取内容经 fs.import 落到工作空间 .attachments/，返回路径进引用标签 */
+  async function importSystemFiles(files: File[]) {
+    if (!isLive || !files.length) return;
+    setImportError("");
+    setImportingFiles(true);
+    try {
+      for (const file of files) {
+        const dataBase64 = arrayBufferToBase64(await file.arrayBuffer());
+        const res = (await client.current.request("fs.import", {
+          name: file.name,
+          dataBase64,
+        })) as { path: string };
+        setAttachments((all) => (all.includes(res.path) ? all : [...all, res.path]));
+      }
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : "附件导入失败");
+    } finally {
+      setImportingFiles(false);
+    }
+  }
+
   async function loadWorkspaceFiles() {
     if (!client.current.connected) return [];
     const res = (await client.current.request("workspace.files")) as {
@@ -565,6 +589,10 @@ export function App() {
       setAttachments((all) =>
         all.includes(path) ? all.filter((p) => p !== path) : [...all, path],
       ),
+    onImportFiles: importSystemFiles,
+    importingFiles,
+    importError,
+    onClearImportError: () => setImportError(""),
     loadWorkspaceFiles: () => loadWorkspaceFiles(),
     providers,
     selection,
@@ -1056,6 +1084,12 @@ export function App() {
                               <StreamingMarkdown content={finalAnswer(m)} streaming={false} />
                             </div>
                           ) : null}
+                          {!(running === session.id) && (m.tokens || m.runDurationSec) ? (
+                            <div className="msg-stats">
+                              {m.tokens ? <span>消耗 {fmtK(m.tokens.total)} tokens</span> : null}
+                              {m.runDurationSec ? <span>执行 {fmtDuration(m.runDurationSec)}</span> : null}
+                            </div>
+                          ) : null}
                           {!m.error && !(running === session.id) && m.runStatus === "completed" && !finalAnswer(m) && m.activities.length === 0 ? (
                             <div className="run-error">
                               <CircleAlert size={15} />
@@ -1304,6 +1338,7 @@ function applyEvent(m: UiMessage, messageId: string, event: ProtocolEvent): UiMe
         activities: closed,
         runStatus: status,
         runDurationSec: duration,
+        tokens: p.tokens as { total: number } | undefined,
         ...(reason === "error" ? { error: friendlyError(String(p.error ?? "任务失败")) } : {}),
       };
     }
@@ -1321,16 +1356,19 @@ function projectSnapshotMessages(
     role: string;
     text: string;
     thinking?: string;
+    tokens?: number;
     tools?: { id: string; toolName: string; args: unknown; output: string; isError: boolean }[];
   }[],
 ): UiMessage[] {
   const out: UiMessage[] = [];
   let current: UiMessage | null = null;
   let turnArtifacts: Artifact[] = [];
+  let turnTokens = 0;
   for (const m of messages) {
     if (m.role === "user") {
       current = null;
       turnArtifacts = [];
+      turnTokens = 0;
       out.push({
         id: crypto.randomUUID(),
         role: "user",
@@ -1373,11 +1411,13 @@ function projectSnapshotMessages(
       }
     }
     if (m.text) acts.push({ kind: "text", id: crypto.randomUUID(), text: m.text });
+    if (typeof m.tokens === "number") turnTokens += m.tokens;
     if (!current) {
       current = { id: crypto.randomUUID(), role: "assistant", activities: [], runStatus: "completed" };
       out.push(current);
     }
     current.activities.push(...acts);
+    if (turnTokens > 0) current.tokens = { total: turnTokens };
     if (turnArtifacts.length) current.artifacts = [...turnArtifacts];
   }
   return out;
@@ -1429,6 +1469,8 @@ export interface UiMessage {
   runStartedAt?: number;
   runStatus?: "running" | "completed" | "failed" | "stopped";
   runDurationSec?: number;
+  /** 本次 run 消耗的 token 总量 */
+  tokens?: { total: number };
   artifacts?: Artifact[];
 }
 
@@ -1438,6 +1480,22 @@ function finalAnswer(m: UiMessage): string {
     if (a.kind === "text") return a.text;
   }
   return "";
+}
+
+/** ArrayBuffer → base64（分块避免 String.fromCharCode 爆栈）。 */
+function arrayBufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}
+
+/** token 用量展示：K 单位、保留一位小数。 */
+function fmtK(total: number): string {
+  return `${(total / 1000).toFixed(1)}K`;
 }
 
 function fmtDuration(sec: number | undefined): string {

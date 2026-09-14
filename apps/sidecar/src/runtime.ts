@@ -190,11 +190,13 @@ export class PiRuntime {
             });
           }
         }
+        const usage = (m as { usage?: { totalTokens?: number } }).usage;
         messages.push({
           role: "assistant",
           text: extractText(m.content),
           thinking: extractThinking(blocks),
           tools: tools.length ? tools : undefined,
+          tokens: num(usage?.totalTokens),
         });
       } else if (role === "toolResult" || role === "tool_result") {
         const toolCallId = str(m.toolCallId ?? m.tool_call_id);
@@ -246,10 +248,28 @@ export class PiRuntime {
     this.cancelRequested = false;
     this.unsubscribe?.();
     this.unsubscribe = session.subscribe((event) => this.onSessionEvent(runId, event as Record<string, unknown>));
+    // 本次 run 的 token 用量：统计 prompt 之后新增消息的 usage 汇总
+    const msgCountBefore = (session.messages as unknown[]).length;
     const finish = (reason: RunEndReason, error?: string) => {
       if (this.activeRunId !== runId) return;
       this.activeRunId = null;
-      const payload: RunEndPayload = { runId, reason, ...(error ? { error } : {}) };
+      let tokens: RunEndPayload["tokens"];
+      try {
+        const added = (session.messages as unknown[]).slice(msgCountBefore);
+        const t = { input: 0, output: 0, total: 0 };
+        for (const m of added) {
+          const u = (m as { usage?: { input?: number; output?: number; totalTokens?: number } }).usage;
+          if (u) {
+            t.input += u.input ?? 0;
+            t.output += u.output ?? 0;
+            t.total += u.totalTokens ?? 0;
+          }
+        }
+        if (t.total > 0) tokens = t;
+      } catch {
+        // 用量统计失败不影响任务结果
+      }
+      const payload: RunEndPayload = { runId, reason, ...(tokens ? { tokens } : {}), ...(error ? { error } : {}) };
       this.emit("run.end", runId, payload);
     };
     void session
@@ -287,6 +307,29 @@ export class PiRuntime {
     return {
       sizeKb: Math.max(1, Math.round(s.size / 1024)),
       modified: s.mtime.toISOString(),
+    };
+  }
+
+  /**
+   * 导入用户系统文件：base64 内容落到工作空间 .attachments/ 下（文件名净化、
+   * 50MB 上限），返回工作空间相对路径，供引擎按路径读取。
+   */
+  async importFile(name: string, dataBase64: string): Promise<{ path: string }> {
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    const clean =
+      nodePath
+        .basename(name)
+        .replace(/[^\p{L}\p{N}._-]+/gu, "_")
+        .slice(0, 120) || "file";
+    const buf = Buffer.from(dataBase64, "base64");
+    if (buf.length === 0) throw new Error("附件内容为空");
+    if (buf.length > 50 * 1024 * 1024) throw new Error("附件超过 50MB 上限");
+    const dir = nodePath.join(this.cwd, ".attachments");
+    await mkdir(dir, { recursive: true });
+    const fileName = `${Date.now().toString(36)}-${clean}`;
+    await writeFile(nodePath.join(dir, fileName), buf);
+    return {
+      path: nodePath.relative(this.cwd, nodePath.join(dir, fileName)).split(nodePath.sep).join("/"),
     };
   }
 

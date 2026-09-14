@@ -150,6 +150,10 @@ export function Composer({
   onPermissionMode,
   attachments,
   onToggleAttachment,
+  onImportFiles,
+  importingFiles,
+  importError,
+  onClearImportError,
   loadWorkspaceFiles,
   hero,
 }: {
@@ -175,6 +179,10 @@ export function Composer({
   onPermissionMode?: (v: PermissionMode) => void;
   attachments?: string[];
   onToggleAttachment?: (path: string) => void;
+  onImportFiles?: (files: File[]) => Promise<void> | void;
+  importingFiles?: boolean;
+  importError?: string;
+  onClearImportError?: () => void;
   loadWorkspaceFiles?: () => Promise<{ path: string }[]>;
   hero?: boolean;
 }) {
@@ -188,6 +196,8 @@ export function Composer({
   const [wsFiles, setWsFiles] = useState<{ path: string }[] | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
   // 放不下时才收敛为纯图标（模型名除外，始终显示）；能用文字就显示文字
   const [compact, setCompact] = useState(false);
   useEffect(() => {
@@ -250,6 +260,12 @@ export function Composer({
     onToggleAttachment?.(path);
   }
 
+  function handlePickedFiles(files: FileList | null) {
+    if (!files?.length || !onImportFiles) return;
+    onImportFiles(Array.from(files));
+    setAttachPop(false);
+  }
+
   const filteredFiles = (wsFiles ?? []).filter((f) =>
     attachQuery.trim() ? f.path.toLowerCase().includes(attachQuery.trim().toLowerCase()) : true,
   );
@@ -269,7 +285,36 @@ export function Composer({
   }, [providers, selection, workspaces, supportsReasoning]);
 
   return (
-    <div className={"composer" + (hero ? " composer-hero" : "") + (compact ? " composer--compact" : "")}>
+    <div
+      className={
+        "composer" +
+        (hero ? " composer-hero" : "") +
+        (compact ? " composer--compact" : "") +
+        (dragging ? " composer--dragging" : "")
+      }
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragging(false);
+        if (onImportFiles) handlePickedFiles(e.dataTransfer?.files ?? null);
+      }}
+    >
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="attach-file-input"
+        onChange={(e) => {
+          handlePickedFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
       {attachments && attachments.length > 0 && (
         <div className="composer-attachments">
           {attachments.map((path) => (
@@ -283,6 +328,16 @@ export function Composer({
           ))}
         </div>
       )}
+      {importError ? (
+        <div className="composer-attachments">
+          <span className="attach-error">
+            {importError}
+            <button aria-label="关闭提示" onClick={() => onClearImportError?.()}>
+              <X size={12} />
+            </button>
+          </span>
+        </div>
+      ) : null}
       <textarea
         aria-label="消息"
         rows={hero ? 3 : 2}
@@ -362,8 +417,16 @@ export function Composer({
                 <>
                   <div className="menu-overlay" onClick={() => setAttachPop(false)} />
                   <div className="session-menu attach-pop">
+                    <button
+                      className="attach-import"
+                      disabled={importingFiles}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <FileText size={14} />
+                      {importingFiles ? "正在导入…" : "选择系统文件…"}
+                    </button>
+                    <div className="attach-divider">或从工作空间选择</div>
                     <input
-                      autoFocus
                       value={attachQuery}
                       placeholder="搜索工作空间文件"
                       onChange={(e) => setAttachQuery(e.target.value)}

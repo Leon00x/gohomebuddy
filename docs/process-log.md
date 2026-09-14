@@ -4,6 +4,16 @@
 
 ---
 
+## 2026-09-14（附件二连：系统文件选择 + 拖拽导入；任务统计：tokens + 执行时间）
+
+- **用户需求**：①+ 号点击弹出系统文件选择器（可选系统任意文件）；②对话框整体支持拖拽文件/图片导入；③任务完成后在输出卡下方展示消耗 tokens（K 单位、1 位小数）与执行时间。
+- **决定**：
+  - 系统文件经原生 picker（`<input type=file>`，Tauri/浏览器通用）读取内容，走新增 sidecar 命令 `fs.import`（base64 → 工作空间 `.attachments/`，50MB 上限、文件名净化）落盘，引用标签记工作空间相对路径——引擎按路径读取，与现有附件机制同构。Tauri 窗口 `dragDropEnabled: false` 放行 HTML5 drop，浏览器/Tauri 统一一条导入代码路径。
+  - tokens 数据源为 pi 会话消息的 `usage.totalTokens`（实测 DeepSeek 会话已含）；`run.end` payload 增加 `tokens{input,output,total}`（按本次 run 新增消息切片统计）；`session.open` 快照 assistant 消息补 `tokens` 供历史回看。
+  - UI：回答下方新增统计行「消耗 X.XK tokens · 执行 X」，+ 菜单顶部新增「选择系统文件…」，composer 为拖拽落区（dragover 高亮）。
+- **影响面**：contracts、sidecar（smoke 增至 14 项）、Composer/App、styles.css。
+- **结果（已完成）**：smoke 14/14（新增 fs.import：中文/空格文件名净化、.attachments/ 落盘验证）；typecheck/build 通过。fs.import 探针验证通过；tokens 统计行为 run.end 切片汇总，首次真实任务后即可在回答下方看到「消耗 X.XK tokens · 执行 X」。系统文件 picker 与拖拽为交互特性，待用户页面实测。
+
 ## 2026-09-14（引擎随包分发：安装包自包含，用户确认）
 
 - **用户需求**：安装包"打包在一起"——用户机器无需 Node、无需仓库即可运行完整 Agent 链路（M10 桌面交付核心）。

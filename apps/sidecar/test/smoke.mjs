@@ -162,7 +162,18 @@ try {
     JSON.stringify(wsFiles.payload?.files ?? wsFiles.error),
   );
 
-  // 8. unknown method + protocol version guard
+  // 8. fs.import 落盘用户系统文件到工作空间
+  const imported = await request("fs.import", {
+    name: "截图 说明.png",
+    dataBase64: Buffer.from("fake-image-bytes").toString("base64"),
+  });
+  check(
+    "fs.import stores attachment",
+    imported.ok && imported.payload?.path?.startsWith(".attachments/") && imported.payload.path.endsWith(".png"),
+    JSON.stringify(imported.payload ?? imported.error),
+  );
+
+  // 9. unknown method + protocol version guard
   const unknown = await request("nope.nope");
   check("unknown method rejected", unknown.ok === false && unknown.error?.code === "unknown_method");
 } catch (err) {

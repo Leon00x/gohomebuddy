@@ -94,6 +94,7 @@ export type ProtocolMethodName =
   | "config.remoteModels"
   | "os.open"
   | "fs.stat"
+  | "fs.import"
   | "workspace.files";
 
 export type ProtocolEventType =
@@ -157,6 +158,8 @@ export interface SnapshotMessage {
   text: string;
   thinking?: string;
   tools?: SnapshotToolCall[];
+  /** assistant 消息的 token 总量（totalTokens） */
+  tokens?: number;
 }
 
 export interface SessionSnapshot {
@@ -201,4 +204,11 @@ export interface RunEndPayload {
   runId: string;
   reason: RunEndReason;
   error?: string;
+  /** 本次 run 消耗的 token 用量（来自引擎会话消息的 usage 汇总） */
+  tokens?: { input: number; output: number; total: number };
+}
+
+export interface FsImportResult {
+  /** 工作空间内相对路径（.attachments/ 下） */
+  path: string;
 }
