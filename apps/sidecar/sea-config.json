@@ -1,7 +1,0 @@
-{
-  "main": "bundle/engine.cjs",
-  "output": "bundle/sea-prep.blob",
-  "disableExperimentalSEAWarning": true,
-  "useSnapshot": false,
-  "useCodeCache": false
-}

@@ -85,6 +85,25 @@ jobs:
       - name: 构建协议包
         run: npm run build -w @office/contracts
 
+      - name: 构建 sidecar
+        run: npm run build -w @office/sidecar
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+      - name: 编译随包引擎
+        shell: bash
+        run: |
+          case "${{ matrix.target }}" in
+            x86_64-unknown-linux-gnu) BUN_TARGET=bun-linux-x64 ;;
+            x86_64-pc-windows-msvc)   BUN_TARGET=bun-windows-x64 ;;
+            aarch64-apple-darwin)     BUN_TARGET=bun-darwin-arm64 ;;
+            x86_64-apple-darwin)      BUN_TARGET=bun-darwin-x64 ;;
+          esac
+          OUT="apps/desktop/src-tauri/binaries/gohomebuddy-engine-${{ matrix.target }}"
+          [ "$(uname)" = "Windows" ] && OUT="$OUT.exe"
+          bun build apps/sidecar/dist/index.js --compile --target="$BUN_TARGET" --outfile "$OUT"
+
       - name: Tauri 构建
         shell: bash
         env:

@@ -15,10 +15,8 @@
     "typecheck": "npm run build -w @office/contracts && tsc --noEmit -p apps/desktop/tsconfig.json && npm run build -w @office/sidecar",
     "desktop": "npm run tauri -w @office/desktop -- dev",
     "sidecar": "npm run build -w @office/sidecar && node apps/sidecar/dist/index.js",
-    "smoke": "npm run build -w @office/contracts && npm run smoke -w @office/sidecar"
+    "smoke": "npm run build -w @office/contracts && npm run smoke -w @office/sidecar",
+    "engine": "bun build apps/sidecar/dist/index.js --compile --outfile apps/desktop/src-tauri/binaries/gohomebuddy-engine-x86_64-unknown-linux-gnu"
   },
-  "devDependencies": {
-    "esbuild": "^0.28.2",
-    "postject": "^1.0.0-alpha.6"
-  }
+  "devDependencies": {}
 }

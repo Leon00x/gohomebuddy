@@ -6,8 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "smoke": "npm run build && node test/smoke.mjs",
-    "bundle": "esbuild dist/index.js --bundle --platform=node --format=esm --outfile=bundle/engine.mjs --log-level=warning"
+    "smoke": "npm run build && node test/smoke.mjs"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "0.85.1",
