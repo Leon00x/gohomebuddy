@@ -12,7 +12,12 @@
   2. Tauri 随包：`externalBin` 按 target triple 携带引擎二进制；`main.rs` 重写——启动 spawn 随包引擎，Rust 内实现 stdio↔WebSocket 桥（127.0.0.1:1421，协议/前端零改动），替换现依赖开发机路径与系统 Node 的 node 桥；修复启动 panic。
   3. CI：矩阵各平台自建引擎二进制（SEA 不支持跨平台）后再打安装包。
 - **已知代价**：安装包体积从 ~3MB 涨到 50MB+（Node runtime 占大头）；pi 依赖树如有原生扩展需额外随包（风险验证第一步确认）。
-- **状态**：实施中，从风险验证（本地 SEA 打包 + 冒烟）开始。
+- **结果（已完成，全平台验证）**：
+  - SEA 方案否决：pi 的 config.js 在初始化时读 `import.meta.url`，SEA 的 CJS 环境下为 undefined，启动即崩；esbuild CJS/ESM 两种产物分别卡在 import.meta 与依赖树 CJS require。改走 **pi 官方支持的 Bun `--compile` 单二进制**路径（源码内置 isBunBinary 适配），91MB，协议探针全绿（handshake/依赖目录/工作空间文件/任务事件流）。
+  - Tauri 壳：externalBin 按 triple 随包引擎；main.rs 重写为 spawn 随包引擎 + Rust stdio↔WS 桥（127.0.0.1:1421，单客户端守卫、新连接顶替旧连接），去除开发机路径依赖与启动 panic；bundle.icon 补齐。
+  - CI：矩阵各平台 setup-bun 1.4.2 交叉编译对应引擎（bun-windows-x64 / bun-darwin-arm64 / bun-darwin-x64 / bun-linux-x64）后打安装包；全平台 run 34801876501 四 job 全绿。
+  - 产物体积：deb 41MB / msi 43MB / dmg 31–34MB。
+- **遗留**：干净机器（无 Node、无仓库）安装实测；引擎工作目录/数据目录在打包环境下的首次启动引导；第三方许可声明（pi 及依赖）。
 
 ## 2026-09-13（v0.1.0 开发预览 Release）
 
