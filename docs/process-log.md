@@ -4,6 +4,215 @@
 
 ---
 
+## 2026-09-14（模型体系统一接管：sidecar 落地）
+
+- **需求（已确认）**：不要内置厂商模型清单，模型配置由应用统一接管。
+- **实现**：
+  - `CURATED_PROVIDERS` 改为只携带名称 / Base URL / 协议（DeepSeek `https://api.deepseek.com/v1`、智谱 `https://open.bigmodel.cn/api/paas/v4`、Z.AI `https://api.z.ai/api/paas/v4`、Z.ai Coding `https://open.bigmodel.cn/api/coding/paas/v4`），不再自带模型。
+  - `listProviders()` 不再调用引擎内置目录：预设厂商的模型清单改读应用管理的模型配置（`models.json`），没有配置就是 0 个模型、auth 为 missing；自定义厂商沿用同一份配置，且跳过与预设同 id 的重复项。
+  - `toCatalogModel()` 透传能力元数据：`reasoning`、`thinkingLevels`、`multimodal`、`contextWindow`、`maxTokens`；缺省即未知，界面按不支持处理。
+- **冒烟**：新增两项断言（预设要有 baseUrl、写入模型后 `config.providers` 能列出该模型），改用应用配置里的模型 id 跑 run，17/17 通过。
+- **影响**：既有用户的厂商需要重新「检测模型」一次才会出现在模型选择器里（之前依赖引擎目录）。
+- **状态**：sidecar 部分完成；界面（设置页重做、按能力限制控件、上下文圆环）未开始。
+
+## 2026-09-14（模型体系重构方案确认：接管模型配置 + 能力元数据 + 上下文圆环）
+
+- **用户需求**：① 不要内置厂商模型清单；② 模型要区分「是否支持思考 / 思考等级」「是否支持多模态」，输入区按能力做限制；③ 输入框加圆环显示已用 / 未用上下文。
+- **决定（已确认）**：
+  1. 模型配置彻底由应用接管——厂商预设只保留名称 / Base URL / 协议，所有厂商的模型清单均由「检测模型」或手动输入产生，并写入引擎模型配置文件；引擎内置目录不再参与解析（统一走现在自定义厂商那条路）。
+  2. 模型条目增加能力元数据：`reasoning`（是否支持思考）、`thinkingLevels`（可用档位）、`multimodal`（是否支持图片输入）；未知即标记未知，不假装支持。
+  3. 输入区按当前模型能力限制控件：不支持思考 → 隐藏思考等级；不支持多模态 → 禁用图片附件并给出原因。
+  4. 输入区新增上下文圆环：显示已用 / 未用上下文与百分比，数据取引擎 token 用量 + 模型上下文窗口；窗口未知时不显示。
+- **影响面（待实施）**：`packages/contracts`（CatalogModel 增能力字段）、`apps/sidecar`（自定义厂商模型写入 + 能力透传 + 上下文窗口）、`apps/desktop`（Composer 圆环与能力限制、Settings 模型管理重做）、`styles.css`。
+- **状态**：设计已确认并入库，实施未开始（上一轮先纠正了「添加模型」动作语义与内置模型来源问题）。
+
+## 2026-09-14（已配置模型：按供应商折叠 + 编辑/删除/添加）
+
+- **用户需求**：已配置的模型全部列出来，按供应商分类；点击展开；展开后对已配置模型可编辑、删除；末尾提供添加功能。
+- **决定**：`已配置` 区改为折叠列表——每行一个供应商（图标 + 名称 + 模型数量 + 箭头），点击展开；展开区逐条列出该厂商启用的模型（名称 + 「编辑」「删除」），末尾为「添加模型」。启用模型取自 `office.enabledModels`，未设置时默认取该厂商前 4 个；「删除」从启用列表移除，「编辑」「添加模型」把该厂商载入下方表单继续配置。
+- **影响面**：`apps/desktop/src/components/Settings.tsx`、`apps/desktop/src/styles.css`、`docs/prd.md` F06。
+- **状态**：已完成（待页面复查）。
+
+## 2026-09-14（模型配置交互修正：去重复胶囊、加检测按钮、检测失败手输）
+
+- **用户反馈**：① 已配置要直接列出来；② 「可添加配置」胶囊与厂商下拉框重复，保留下拉框；③ Key 下面加一个明确的「检测模型」按钮；④ 检测到就让用户选、检测不到就让用户手输。
+- **决定**：删除「可添加配置」胶囊区（只保留原厂商下拉框），模块标题改名「添加配置」；Key 输入框下方的失焦自动检测改为显式「检测模型 / 重新检测模型」按钮（未填 Key 时禁用）；检测有结果时展示 4 个胶囊 + 「其他 N 个」下拉并支持多选，检测无结果时（`detected && pillModels.length === 0`）展示手动填写模型 ID 的输入框。
+- **影响面**：`apps/desktop/src/components/Settings.tsx`、`apps/desktop/src/styles.css`、`docs/prd.md` F06。
+- **实测（真实引擎）**：模型页显示「已配置 → DeepSeek 3 个可选」「添加配置 → 1 选择厂商 / 2 填入 API Key / 检测模型按钮（未填 Key 时 disabled）/ 3 选择模型 3 个胶囊」；`provider-chip` 数量为 0；首屏输入区模型按钮直接显示「DeepSeek V4 Flash」。
+- **状态**：已完成。
+
+## 2026-09-14（修复：输入区默认没有文字）
+
+- **用户反馈**：一打开应用，输入区默认「都没有文字」，选中模型后文字才出现。
+- **根因**：模型按钮文案写成 `catalogModel?.name ?? selection.modelId ?? "选择模型"`，而 `selection.modelId` 是空字符串时 `??` 不兜底，于是按钮渲染成空；且应用启动时不会自动选默认模型，所以首屏模型位一直是空白。
+- **决定**：文案改用 `||` 串联；启动拉取厂商目录后，若尚未选模型则自动选中第一个「已配置且模型非空」的厂商的首个模型。
+- **影响面**：`apps/desktop/src/components/ModelMenu.tsx`、`apps/desktop/src/App.tsx`。
+- **实测**：默认首屏工具栏显示「询问 / 中 / DeepSeek V4 Flash」三段文字，模型按钮宽 96px；无需先选模型。
+- **状态**：已完成。
+
+## 2026-09-14（回归修复 + 模型配置重构：issue 反馈 1–6）
+
+- **用户反馈**：① 宽屏下工具栏什么都不显示、选了模型才出现；② 模型/权限浮层被覆盖；③ 窗口缩不小、文字不隐藏；④ 未配置的模型不该可选；⑤ 设置里要分「已配置 / 可添加配置」；⑥ 配置流程：选厂商 → 填 Key → 检测模型 → 显示 4 个可多选、其余进下拉。
+- **根因（①②）**：
+  1. 工具栏测量误用 `scrollWidth`，展开的浮层是绝对定位子节点会把宽度撑大，导致一开菜单就判定「放不下」→ 收缩；关掉菜单（如选完模型）再测又变宽 → 恢复文字，正好对应「选了模型才显示」。改为量克隆节点自身的盒子宽度 `getBoundingClientRect().width`。
+  2. 双层改造时给 `.composer-input` 加了 `overflow: hidden`，把向上/向下展开的模型与权限浮层裁掉了。移除该属性。
+- **③**：窗口 `minWidth` 960 → 760；PRD 最小窗口同步为 760×640。
+- **④**：`ModelMenu` 只列 `auth === "ready"` 的供应商；若某厂商设置了启用模型，则只列这些模型；无任何已配置项时给出空态文案。
+- **⑤⑥**：设置「模型」页顶部新增「已配置」（已就绪厂商 + 模型数量）与「可添加配置」（未配置厂商 + 自定义厂商胶囊）两个模块；Key 输入框失焦后自动跑一次检测（自定义厂商拉远端 `/models`，内置厂商刷新目录）；模型改为 4 个胶囊多选 + 「其他 N 个」下拉，选择结果保存到 `office.enabledModels` 并用于过滤模型菜单。
+- **影响面**：`apps/desktop/src/components/{Composer,ModelMenu,Settings}.tsx`、`apps/desktop/src/App.tsx`、`apps/desktop/src/styles.css`、`apps/desktop/src-tauri/tauri.conf.json`、`docs/prd.md`。
+- **实测**：权限浮层 260×175 正常展开、`.composer-input` overflow 恢复 `visible`、菜单展开时工具栏不再误收缩；`npm run typecheck` 通过。
+- **状态**：已完成。
+
+## 2026-09-14（Issue #4：Composer 工具栏响应式收缩）
+
+- **用户需求**：实现 GitHub #4。
+- **根因**：原实现用 `el.scrollWidth > el.clientWidth` 判断，而 compact 会改变同一元素的宽度需求，形成反馈环；窗口变宽后判据仍基于“已经收缩的 DOM”，只能靠模型/权限等状态变化触发的 effect 重跑才偶然恢复。
+- **决定**：改为独立测量——每次判定时把 `.composer-toolbar` 克隆一份，去掉 `composer-toolbar` 类并挂 `.composer-toolbar-measure`（绝对定位、不可见、`width: max-content`，内部 `.ctl-text/.ctl-chev` 强制展开），在同一父节点内量出「完整工具栏所需宽度」，再与当前 `clientWidth` 比较：`compact = available < required`，退出时加 6px 迟滞。ResizeObserver 改为观察工具栏的父容器（输入框），并用 rAF 合并；依赖数组触发的 `useLayoutEffect` 只负责重新测量，不再决定 compact 取值。
+- **影响面**：`apps/desktop/src/components/Composer.tsx`、`apps/desktop/src/styles.css`、`docs/prd.md` F03。
+- **实测（viewport 宽度扫描）**：1280px → 可用 736px，不收缩、权限文字显示；900/700px → 可用 552/352px，完整工具栏仍放得下，保持文字；420/360/300px → 可用 72/16/16px，进入收缩，权限文字 `display: none`、模型名保持可见；再回到 1280px → 自动恢复文字，无需任何点击。
+- **状态**：已完成。
+
+## 2026-09-14（默认用户名 Leon）
+
+- **用户需求**：默认用户名改为 `Leon`。
+- **决定**：`office.userProfile` 缺失或名字为空时统一回落为 `Leon`（含历史空值迁移），并在 PRD F08 补记「个人资料」需求（此前只写了过程记录）。
+- **影响面**：`apps/desktop/src/App.tsx`（资料读取默认值）、`docs/prd.md` F08。
+- **状态**：已完成。
+
+## 2026-09-14（头像比例修复 + 用户资料设置）
+
+- **用户需求**：① 会话里的 Agent 图标被压扁、比例不对，同时整理整体布局细节；② 设置里增加用户名与头像，左下角常驻显示用户头像。
+- **根因（①）**：`.agent-avatar` 容器是 22×22，但内部 `.otter-img` 固定 26×26，作为 grid 子项被横向压到 22px、高度仍 26px，`object-fit` 默认 `fill`，于是纵向拉伸；同一条消息里用户头像是 26×26 圆形，两者尺寸也不一致。
+- **决定**：
+  - 头像统一为 26×26 圆形：`.agent-avatar` 与 `.message-avatar` 同尺寸，图片改为 `width/height: 100%` + `object-fit: contain`，删除无用的 `.agent-avatar svg` 规则。
+  - 设置新增「个人资料」页：用户名输入 + 头像选择（本地图片经 canvas 等比缩放到 128px 后以 data URL 存 `office.userProfile`），支持移除头像。
+  - 侧边栏左下角改为用户条目：头像 + 用户名，点击打开设置，右侧保留齿轮入口；消息列表里用户气泡头像同步使用该头像，未设置时回落为首字母。
+- **影响面**：`apps/desktop/src/App.tsx`、`apps/desktop/src/components/Settings.tsx`、`apps/desktop/src/styles.css`。
+- **实现与实测**：
+  - 头像：`.agent-avatar` 与 `.message-avatar` 统一 26×26 圆形，图片 `width/height: 100%` + `object-fit: contain`，删除失效的 `.agent-avatar svg` 规则。实测修复前图片为 22×26（横向被压），修复后容器与图片均为 26×26。
+  - 个人资料：设置新增「个人资料」页（用户名输入 + 头像选择/移除），图片经 canvas 等比缩放到 128px 后以 data URL 存入 `office.userProfile`；未设头像时回落为用户名首字母，用户名为空时显示用户图标。
+  - 左下角改为用户条目（头像 + 用户名 + 齿轮），点击进入设置；消息列表里用户气泡头像与显示名同步使用该资料。
+  - 实测：「个人资料」页用户名占位「你的名字」、头像预览 44×44、含隐藏 file input 与「选择图片」；把用户名改为 `Leon` 后，左下角头像显示 `L`、名称同步为 `Leon`。
+  - `npm run typecheck` 通过。
+- **状态**：已完成。
+
+## 2026-09-14（主界面问候语按时段改写）
+
+- **用户需求**：按指定时段替换主界面问候语：07:00–12:00「早上好，来杯 Coffee 再开干？」、12:00–14:00「中午啦，休息会吧」、14:00–17:30「下午好，要出去溜达一圈吗？」、17:30–18:30「准备，收拾好包～」、18:30–06:00「晚上好，有工作交给我吧，别卷了～」。
+- **决定**：`greeting()` 改为按分钟粒度判定，覆盖 06:00–12:00 / 12:00–14:00 / 14:00–17:30 / 17:30–18:30 / 18:30–次日 06:00 五档；用户未指明 06:00–07:00，归入早间文案以消除空档。
+- **影响面**：`apps/desktop/src/App.tsx`（`greeting()`）、`docs/prd.md` F03（补记问候语时段表）。
+- **状态**：已完成。
+
+## 2026-09-14（工作空间可展开、标签行收敛、行高对齐）
+
+- **用户需求**：① 管理标签每行只留图标 + 标签名，放在同一排；② 工作空间支持展开查看其下的会话；③ 工作空间行与会话行高度接近。
+- **决定**：
+  - 工作空间行左侧加独立折叠箭头（默认全部展开，存 `collapsedWs`），展开后缩进显示归属该空间的会话；“所有”视图下平铺列表只列出无空间的会话，标签视图仍平铺展示全部匹配结果。
+  - 标签管理行改为 [标签图标 + 名称] 单排布局，重命名/常用/删除三个按钮改为 hover 或键盘聚焦时显现（已设常用的星标常显）。
+  - `.session-main` 统一 `min-height: 36px`，`.ws-main` 字号与会话行对齐为 13.5px，保证两类行等高。
+- **影响面**：`apps/desktop/src/App.tsx`（折叠状态、展开渲染、标签行、清理重复的 `workspacePickerError` 节点）、`apps/desktop/src/styles.css`。
+- **实现与实测**：工作空间行左侧新增独立折叠箭头（默认展开，`collapsedWs` 记折叠项），“所有”视图下缩进展示该空间的会话、平铺列表只留无空间会话；标签管理行改为 `[标签图标][名称][操作]` 单排，操作按钮默认 `opacity: 0`，hover / 键盘聚焦显现（已常用星标常显）；`.session-main` 统一 `min-height: 36px`、`.ws-main` 字号对齐 13.5px；顺带删掉重复渲染的 `workspacePickerError` 节点。
+  - 实测：会话行 `min-height: 36px`；标签行结构为 `svg + span + 3×button`，行高 34px，三个操作按钮默认 `opacity: 0`；`npm run typecheck`、`git diff --check` 通过。
+  - 工作空间展开效果依赖本机已存在的工作空间数据（预览实例无法调起文件夹选择器创建），需在桌面端确认。
+- **状态**：已完成。
+
+## 2026-09-14（Composer 双层结构改造，对齐参考样式）
+
+- **用户需求**：按参考图继续模仿输入区样式。
+- **参考图结构（脚本解析 1771×816 PNG 得出）**：页面白底 → 外层浅灰圆角容器 → 容器左上角一个无边框的工作空间条（文件夹图标 + 名称 + 箭头）→ 容器内嵌白色圆角输入框（占位文案 + 工具栏）→ 容器下方一排建议胶囊。
+- **决定**：Composer 改为双层结构——`.composer` 作为浅灰外壳（`var(--soft)`、圆角 18px、内边距 8px），新增 `.composer-input` 内层白色输入框（`var(--surface)`、1px `var(--line)`、圆角 14px），工作空间选择器 `.composer-scope` 放在外壳左下、输入框之上，改为无边框无底色的裸文本条（hover 才出底色），聚焦态边框移到内层输入框；深色主题外壳单独取值 `#1e2521`。
+- **影响面**：`apps/desktop/src/components/Composer.tsx`（新增内层容器）、`apps/desktop/src/styles.css`。
+- **实测**：外壳 720×185 / 圆角 18px / 内边距 8px / 背景 rgb(237,243,237)；内层 702×131 / 白底 / 1px rgb(230,233,226) / 圆角 14px；工作空间条 114×26 / 无边框无底色 / 位于输入框上方。`npm run typecheck` 通过。
+- **状态**：已完成。
+
+## 2026-09-14（工作空间入口与选择器位置调整）
+
+- **用户反馈**：① 点工作空间后不该在它旁边出现“新建会话”按钮，而应直接进入新建会话页并默认选中该空间；② 空间/无空间选择器应放到输入框左上角。
+- **决定**：工作空间行点击行为改为 `create(workspaceId)`，直接进入该空间的新会话页；移除 section 头部的“新建会话”按钮与 `scope.kind === "workspace"` 过滤分支，Workspace 行的选中态改由当前草稿绑定的空间（`draftGroup`）驱动。Composer 的工作空间选择器从底部工具栏移到输入框左上角（新增 `.composer-scope`，菜单改为向下展开），并在 compact 模式下保持文字可见。
+- **影响面**：`apps/desktop/src/App.tsx`、`apps/desktop/src/components/Composer.tsx`、`apps/desktop/src/styles.css`；PRD F01/F02 同步。
+- **实现与实测**：工作空间行点击直接 `create(wsId)` 进入新会话页，选中态由 `draftGroup` 驱动；移除 section 头部“新建会话”按钮与 workspace 过滤分支。选择器迁到 `.composer-scope`（输入框内左上角），改为胶囊样式：26px 高、`border-radius: 999px`、1px `var(--line)` 描边、`var(--bg)` 底、文件夹图标取 `var(--accent)`，菜单向下展开；compact 模式仍显示文字。
+  - 实测：胶囊 113×26、圆角 999px、距输入框左 13px / 上 11px、图标色 rgb(61,101,81)；侧栏工作空间区只剩“添加工作空间”按钮。
+- **状态**：已完成。
+
+## 2026-09-14（侧栏宽度 / 行菜单留白 / 会话右键菜单）
+
+- **用户需求**：① 侧边栏再宽一点，“…”按钮与滚动条之间留出距离；② 会话支持右键菜单。
+- **决定**：侧栏由 232px 调整为 264px（仍在视觉规范 240–272px 区间）；会话列表右侧增加内边距，行菜单按钮外边距同步加大，避免“…”贴着滚动条。右键菜单复用现有会话菜单，新增浮层定位（`position: fixed` 跟随指针、越界钳制），左键“…”仍保持贴行展开；工作空间行同样支持右键。
+- **影响面**：`apps/desktop/src/App.tsx`、`apps/desktop/src/styles.css`、`docs/commercial-ui-prd.md`。
+- **实现与页面实测**：侧栏 232px → 264px（横向内边距 12px → 14px）；`.session-list` 右侧内边距 6px、行菜单按钮 `margin-right` 4px → 6px；右键会话/工作空间行调用 `contextMenuPoint()` 在视口内钳制坐标，菜单以 `row-menu-floating`（`position: fixed`）跟随指针展开，左键“…”仍保持贴行绝对定位。
+  - 实测：侧栏宽 264px；列表 `padding-right: 6px`；右键会话后菜单 `position: fixed` 出现在指针处（128, 346），四行均为 36px；点“…”仍是 `position: absolute; right: 6px`。
+  - 回归方式：为避免占用桌面端单客户端桥，验证时先停桌面版、在 1422 端口跑独立预览，验证完再重启桌面版。
+- **状态**：已完成。
+
+## 2026-09-14（交互调整：新建会话不再强制选工作空间）
+
+- **用户反馈**：点“新建会话”要先选工作空间才能进主页，步骤多余；希望直接进主页，在输入框里选工作空间。
+- **决定**：撤销 #5 落地时加的“全局新建会话选择弹窗”。点“新建会话”立即创建空会话并进入主页；工作空间选择收敛到输入框的工作空间选择器（已有 Workspace / 选择其他文件夹… / 无工作空间）。当前处于某 Workspace 筛选时，新建会话默认预选该 Workspace；文件夹选择失败的错误提示改回侧边栏工作空间区显示。
+- **影响面**：`apps/desktop/src/App.tsx`（移除弹窗与 `newSessionOpen` 状态、按钮行为与错误提示位置）；PRD F01 同步。
+- **补充修复**：点“新建会话”后立即进入空会话（不再弹窗）；按钮上的重复加号（领先图标 + 尾随全角 `＋`）已删除；旧会话兜底标题同时剥离触发 Prompt 里的 `[引用工作空间文件…]` 引用块。
+- **页面回归**：新建会话按钮只剩一个图标 + “新建会话”；点击直接进主页，输入框保留工作空间选择器；发送后会话标题取原始输入（实测「回归：新建会话标题来源」）。
+- **标题兜底实测**：把「权限指令 + 用户问题 + 附件引用块」混合的脏 Prompt 交给引擎，`session.list` 返回标题「读一下这个文件」，两段内部上下文都被剥离。
+- **状态**：已完成。
+
+## 2026-09-14（Issue #3 会话标题解耦 + Issue #1 Windows 无控制台）
+
+- **用户需求**：实现 GitHub #3 与 #1。
+- **决定（#3）**：标题只由 Desktop 基于用户原始输入生成并显式写入会话元数据，不再依赖引擎 `firstMessage` 推断；`run.start` 增加 `sessionTitle` 参数，仅在会话尚无消息时写入 `appendSessionInfo`。旧会话保留 `firstMessage` 兜底，但先剥离 `[权限模式：…]` 等内部指令前缀；手动重命名优先级最高，后续对话不再改写标题。
+- **决定（#1）**：Windows 下用 `CREATE_NO_WINDOW` 创建引擎子进程，保持 stdin/stdout 管道不变；引擎 stderr 改为 pipe 并落盘到 `~/.office-agent/logs/engine.log`（超过 2MB 截断重写），既避免无控制台环境下句柄失效，也让日志可查。
+- **影响面**：contracts（`RunStartParams.sessionTitle`）、sidecar（标题写入 + 兜底清洗）、Desktop（标题生成与传递）、Tauri 主进程（进程创建标志与 stderr 落盘）。
+- **实现与验证**：
+  - #3：`run.start` 新增 `sessionTitle`；引擎仅在会话尚无消息时 `appendSessionInfo` 写入。Desktop 用 `createSessionTitle()` 基于原始输入生成（中文 24 字 / 英文 56 字符、压缩空白、超长省略），重试与继续不重新生成。`firstMessage` 兜底先剥离 `[权限模式：…]` 整行，且不误伤用户自己以方括号开头的提问。
+  - #3 实测（临时数据目录 + 真实模型两次极短调用）：显式 `sessionTitle` 会话标题为「帮我把这个 Excel 整理一下」；未传 `sessionTitle` 的会话兜底标题为「第二个会话的原始问题」，权限文本已被剥掉。
+  - #3 冒烟新增校验 `session title from sessionTitle param`，冒烟 16/16 通过。
+  - #1：Windows 下 `command.as_std_mut().creation_flags(CREATE_NO_WINDOW)`；引擎 stderr 由 `inherit` 改为 pipe，逐行写入 `~/.office-agent/logs/engine.log`（追加，超 2MB 截断重写）并同时打到终端。
+- **状态**：已完成（#1 的 Windows 无窗口行为需在 Windows 安装包上验收）。
+
+## 2026-09-14（排查：选工作空间后发消息卡住）
+
+- **用户反馈**：选择工作空间后发送消息，界面停在工作中不动。
+- **排查**：
+  1. 源码版 sidecar 用临时数据目录复现同一路径：`session.new {cwd}` → `run.start` 1.9s 正常 `run.end`；随后 `session.setCwd` → `run.start` 1.2s 正常 `run.end`。协议链路无问题。
+  2. 发现桌面版实际运行的是 `target/debug/gohomebuddy-engine`，该二进制为 11:02 构建，`grep` 确认不含 `fs.import` / `session.setCwd`，也不认 `session.new` 的 `cwd`——本轮 sidecar 改动根本没进桌面版。
+  3. 期间前端多次 HMR 更新（改动含 hooks 顺序变化），残留的运行态也会让界面停在“工作中”。
+- **处理**：`npm run engine` 重新编译随包引擎（校验 `session.setCwd`/`fs.import` 已在内），杀掉旧开发进程后用 detached 方式重启桌面版，`target/debug/gohomebuddy-engine` 更新为 15:15 新二进制。
+- **结论/教训**：改 `apps/sidecar` 后必须跑 `npm run engine`；桌面 dev 只会在启动时复制 externalBin，不重编引擎。改前端 hooks 后如出现状态错乱，重启应用而不是依赖 HMR。
+- **状态**：已完成。
+
+## 2026-09-14（回归修复：会话菜单图标与文字换行）
+
+- **用户反馈**：会话右键菜单、“选择其他文件夹”等浮层里，图标和文字各占一行，行高被撑到 51px。
+- **根因**：`.session-menu button` 只设了 `width/padding`，没有建立 flex 布局；Tailwind preflight 把 `svg` 设为 `display: block`，图标因此独占一行。权限菜单单独设了 flex 所以不受影响——项目里已有同类注释（`.act-row.act-think`）。
+- **决定**：`.session-menu button` 统一改为 flex 行布局（`align-items: center` + `gap`），并把标签项的名称包成 `span` 以便勾选图标靠右；权限菜单的 flex-start 覆盖保持不变。
+- **影响面**：`apps/desktop/src/App.tsx`、`apps/desktop/src/styles.css`；会话菜单、工作空间菜单、标签选择、移动会话子菜单。
+- **实现与验证**：`.session-menu button` 改为 `display: flex; align-items: center; gap: 7px`，行高由 51px 回到 36px；标签项名称包 `span` 使勾选图标靠右；补 `.current` 选中态。同时用高权重选择器还原 `.mi-ok`（26px）与 `.ws-pop-file`（block）以免被新规则误伤。
+- **页面实测**：会话菜单四行均为 flex/36px；内联重命名行的确认键 26px、行高 41px；“移动到工作空间 → 选择其他文件夹”行高 36px。`npm run typecheck`、`npm run build` 通过。
+- **状态**：已完成。
+
+## 2026-09-14（Issue #5 回归修复：Workspace 与会话解耦、标签管理可用）
+
+- **用户反馈**：Workspace 文件夹折叠会连带折叠其下会话；“管理标签”打开后无法创建标签。
+- **决定**：Workspace 区只展示目录入口并负责筛选，Session 区独立展示当前筛选结果，不再把 Session 作为 Workspace 的树形子节点。标签管理改为独立应用内浮层，提供可聚焦的新建输入、明确的创建按钮及空态。
+- **影响面**：侧边栏信息架构、Workspace 选中态、标签管理浮层、键盘与浅深主题交互。
+- **实现与验证**：
+  - Workspace 行不再承载会话，取消折叠控件与折叠状态；点击 Workspace 只切换下方会话区的筛选范围，会话列表始终平铺展示。
+  - 标签管理改为居中对话框（`app-dialog`），含独立新建表单与空态文案；按钮与 Enter 两条创建路径均在页面实测通过，测试标签已清理。
+  - 补上“未分类”分组折叠、Workspace 内直接新建会话入口、全局新建会话的工作空间选择界面（已有 Workspace / 选择其他文件夹 / 无工作空间），Workspace 行增加选中态与路径悬停提示。
+  - `npm run typecheck`、`npm run build`、`npm run smoke`（15/15）通过。
+- **状态**：已完成。
+
+## 2026-09-14（Issue #5：Workspace / Session / Tag 模型）
+
+- **用户需求**：实现 GitHub #5，明确 Workspace（本地文件夹/项目）、Session（一次任务）与 Tag（会话分类）的职责，并完善全局与工作空间内的新建会话流程。
+- **决定**：Workspace 必须绑定 `folderPath`，Session 最多关联一个 Workspace，Tag 不参与 cwd 或权限决策；全局新建显式选择 Workspace、新目录或无工作空间，避免自动误绑目录。会话筛选固定保留“所有 / 标签”，最多三个用户设置的常用 Tag。
+- **影响面**：产品数据模型与持久化、协议/sidecar 的 Session cwd、侧边栏及新建会话交互、Tag 管理、浅深主题和浏览器回归。
+- **实现与验证**：
+  - Workspace 使用桌面端原生文件夹选择器，保存展示名与绝对路径；旧的无路径“分组”不会迁移为 Workspace。
+  - `session.new/open/setCwd` 支持按 Workspace 路径创建、恢复与移动会话，侧边栏移动当前会话时同步重建本地引擎运行上下文；无 Workspace 回到运行时默认目录。
+  - 全局输入框可选择已有 Workspace、其他文件夹或无工作空间；选中 Workspace 后新建会话默认归属该 Workspace。
+  - 标签支持创建、重命名、删除、会话多选关联、按标签分组视图以及最多三个固定常用入口。
+  - `npm run typecheck`、`npm run build`、`npm run smoke`（15/15，含 `session.setCwd` 切换真实目录）与 `cargo check` 通过；浏览器加载本地 UI，确认无 Workspace 会话明确显示“无工作空间”。
+- **状态**：已完成。
+
 ## 2026-09-14（附件二连：系统文件选择 + 拖拽导入；任务统计：tokens + 执行时间）
 
 - **用户需求**：①+ 号点击弹出系统文件选择器（可选系统任意文件）；②对话框整体支持拖拽文件/图片导入；③任务完成后在输出卡下方展示消耗 tokens（K 单位、1 位小数）与执行时间。

@@ -86,6 +86,7 @@ export type ProtocolMethodName =
   | "session.list"
   | "session.new"
   | "session.open"
+  | "session.setCwd"
   | "session.rename"
   | "session.delete"
   | "run.start"
@@ -122,7 +123,12 @@ export interface HandshakeResult {
 export interface CatalogModel {
   id: string;
   name: string;
+  /** 是否支持思考（reasoning）。未知时按不支持处理。 */
   reasoning: boolean;
+  /** 可用的思考等级子集；缺省表示沿用全局档位。 */
+  thinkingLevels?: string[];
+  /** 是否支持多模态（图片输入）。缺省按不支持处理。 */
+  multimodal?: boolean;
   contextWindow: number;
   maxTokens: number;
 }
@@ -143,6 +149,8 @@ export interface SessionSummary {
   title: string;
   modified: string;
   messageCount: number;
+  /** Session 创建时使用的工作目录；旧会话可能没有此字段。 */
+  cwd?: string;
 }
 
 export type SnapshotToolCall = {
@@ -190,12 +198,26 @@ export interface WorkspaceFilesResult {
 
 export interface RunStartParams {
   prompt: string;
+  /** 首条消息时由 UI 基于用户原始输入生成的会话标题（不参与 Prompt 拼接）。 */
+  sessionTitle?: string;
   providerId?: string;
   modelId?: string;
   /** pi ThinkingLevel: off | minimal | low | medium | high | xhigh | max */
   thinkingLevel?: string;
   /** ask | auto_edit | full_access；引擎按档位注入相应权限指令 */
   permissionMode?: string;
+}
+
+export interface WorkspaceRecord {
+  id: string;
+  name: string;
+  folderPath: string;
+}
+
+export interface TagRecord {
+  id: string;
+  name: string;
+  pinned?: boolean;
 }
 
 export type RunEndReason = "completed" | "aborted" | "error";

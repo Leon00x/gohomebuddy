@@ -18,7 +18,7 @@ import {
   Square,
   X,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "./Button";
 import { ModelMenu } from "./ModelMenu";
 import {
@@ -142,8 +142,9 @@ export function Composer({
   workspaces,
   draftGroup,
   onDraftGroup,
-  onCreateGroup,
+  onChooseWorkspaceFolder,
   providers,
+  enabledModels,
   selection,
   onSelectModel,
   onOpenSettings,
@@ -172,8 +173,9 @@ export function Composer({
   workspaces: WorkspaceOption[];
   draftGroup: string;
   onDraftGroup: (id: string) => void;
-  onCreateGroup: (name: string) => string;
+  onChooseWorkspaceFolder?: () => Promise<string | undefined>;
   providers: CatalogProvider[];
+  enabledModels?: Record<string, string[]>;
   selection: ModelSelection;
   onSelectModel: (v: ModelSelection) => void;
   onOpenSettings: () => void;
@@ -193,8 +195,6 @@ export function Composer({
   hero?: boolean;
 }) {
   const [groupMenu, setGroupMenu] = useState(false);
-  const [creatingGroup, setCreatingGroup] = useState(false);
-  const [newGroupName, setNewGroupName] = useState("");
   const [thinkingPop, setThinkingPop] = useState(false);
   const [permPop, setPermPop] = useState(false);
 
@@ -212,8 +212,8 @@ export function Composer({
   }, [draft]);
   const groupName =
     draftGroup === UNGROUPED
-      ? "未分组"
-      : workspaces.find((w) => w.id === draftGroup)?.name ?? "未分组";
+      ? "无工作空间"
+      : workspaces.find((w) => w.id === draftGroup)?.name ?? "无工作空间";
   const currentLevel =
     THINKING_LEVELS.find((l) => l.id === (thinkingLevel ?? DEFAULT_LEVEL)) ??
     THINKING_LEVELS[2];
@@ -226,22 +226,7 @@ export function Composer({
     "选择模型";
 
   function pickGroup(id: string) {
-    if (id === "__new__") {
-      // 内联输入替代系统 prompt（UI 规范）
-      setCreatingGroup(true);
-      setNewGroupName("");
-      return;
-    }
     onDraftGroup(id);
-    setGroupMenu(false);
-  }
-
-  function confirmNewGroup() {
-    const name = newGroupName.trim();
-    if (!name) return;
-    onDraftGroup(onCreateGroup(name));
-    setNewGroupName("");
-    setCreatingGroup(false);
     setGroupMenu(false);
   }
 
@@ -267,19 +252,67 @@ export function Composer({
     onImportFiles(Array.from(files));
   }
 
-  useLayoutEffect(() => {
+  /**
+   * 自适应收缩：compact 只表示「当前可用宽度放不下完整工具栏」。
+   * 判定不看 compact 之后的 DOM，而是在同一父节点里克隆一份完整工具栏
+   * （`.composer-toolbar-measure`，绝对定位、不可见）量出所需宽度，
+   * 因此进入/退出用的是同一把尺子，不会出现拉宽后卡在图标态的问题。
+   */
+  const measureFullWidth = useCallback(() => {
+    const el = toolbarRef.current;
+    const parent = el?.parentElement;
+    if (!el || !parent) return 0;
+    const clone = el.cloneNode(true) as HTMLElement;
+    clone.classList.remove("composer-toolbar");
+    clone.classList.add("composer-toolbar-measure");
+    clone.setAttribute("aria-hidden", "true");
+    parent.appendChild(clone);
+    // 用自身盒子宽度而不是 scrollWidth：展开的浮层是绝对定位的子节点，
+    // 会把 scrollWidth 撑大，导致菜单一开就误判为需要收缩。
+    const required = Math.ceil(clone.getBoundingClientRect().width);
+    clone.remove();
+    return required;
+  }, []);
+
+  const checkToolbar = useCallback(() => {
     const el = toolbarRef.current;
     if (!el) return;
-    const check = () => setCompact(el.scrollWidth > el.clientWidth + 1);
-    check();
-    const ro = new ResizeObserver(check);
-    ro.observe(el);
-    window.addEventListener("resize", check);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", check);
+    const available = el.clientWidth;
+    if (!available) return;
+    const required = measureFullWidth();
+    if (!required) return;
+    // 6px 迟滞：避免临界宽度附近来回闪烁
+    const GAP = 6;
+    setCompact((prev) => (prev ? available < required + GAP : available < required));
+  }, [measureFullWidth]);
+
+  // 依赖项变化（模型名、权限文案、语言等）后重新量一次；这里只触发测量，
+  // compact 的取值完全由宽度决定。
+  useLayoutEffect(() => {
+    checkToolbar();
+  });
+
+  useLayoutEffect(() => {
+    const el = toolbarRef.current;
+    const container = el?.parentElement ?? el;
+    if (!el || !container) return;
+    let frame = 0;
+    const schedule = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        checkToolbar();
+      });
     };
-  }, [providers, selection, workspaces, supportsReasoning]);
+    const ro = new ResizeObserver(schedule);
+    ro.observe(container);
+    window.addEventListener("resize", schedule);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      ro.disconnect();
+      window.removeEventListener("resize", schedule);
+    };
+  }, [checkToolbar]);
 
   return (
     <div
@@ -312,6 +345,40 @@ export function Composer({
           e.target.value = "";
         }}
       />
+      {showGroupSelector && (
+        <div className="composer-scope">
+          <div className="group-anchor">
+            <button
+              className="group-select"
+              onClick={() => {
+                setGroupMenu(!groupMenu);
+                setThinkingPop(false);
+              }}
+              title={groupName}
+            >
+              <Folder size={14} />
+              <span className="ctl-text">{groupName}</span>
+              <ChevronDown size={12} className="ctl-chev" />
+            </button>
+            {groupMenu && (
+              <div className="session-menu group-menu">
+                <>
+                  <button onClick={() => pickGroup(UNGROUPED)}>无工作空间</button>
+                  {workspaces.map((w) => (
+                    <button key={w.id} onClick={() => pickGroup(w.id)}>
+                      {w.name}
+                    </button>
+                  ))}
+                  <button onClick={() => void onChooseWorkspaceFolder?.().then((id) => id && pickGroup(id))}>
+                    <Plus size={13} /> 选择其他文件夹
+                  </button>
+                </>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      <div className="composer-input">
       {attachments && attachments.length > 0 && (
         <div className="composer-attachments">
           {attachments.map((path) => {
@@ -365,49 +432,6 @@ export function Composer({
       />
       <div className="composer-toolbar" ref={toolbarRef}>
         <div>
-          {showGroupSelector && (
-            <div className="group-anchor">
-              <button
-                className="group-select"
-                onClick={() => {
-                  setGroupMenu(!groupMenu);
-                  setThinkingPop(false);
-                              }}
-              >
-                <Folder size={14} />
-                <span className="ctl-text">{groupName}</span>
-                <ChevronDown size={12} className="ctl-chev" />
-              </button>
-              {groupMenu && (
-                <div className="session-menu group-menu">
-                  {creatingGroup ? (
-                    <MenuInputRow
-                      initial={newGroupName}
-                      onChange={setNewGroupName}
-                      placeholder="工作空间名称"
-                      onConfirm={confirmNewGroup}
-                      onCancel={() => {
-                        setCreatingGroup(false);
-                        setNewGroupName("");
-                      }}
-                    />
-                  ) : (
-                    <>
-                      <button onClick={() => pickGroup(UNGROUPED)}>未分组</button>
-                      {workspaces.map((w) => (
-                        <button key={w.id} onClick={() => pickGroup(w.id)}>
-                          {w.name}
-                        </button>
-                      ))}
-                      <button onClick={() => pickGroup("__new__")}>
-                        <Plus size={13} /> 新建工作空间
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
           <div className="group-anchor">
             <button
               className={"group-select attach-btn" + (attachments?.length ? " has-attachments" : "")}
@@ -509,6 +533,7 @@ export function Composer({
           )}
           <ModelMenu
             providers={providers}
+            enabledModels={enabledModels}
             selection={selection}
             onSelect={onSelectModel}
             onOpenSettings={onOpenSettings}
@@ -529,6 +554,7 @@ export function Composer({
             )}
           </Button>
         </div>
+      </div>
       </div>
     </div>
   );

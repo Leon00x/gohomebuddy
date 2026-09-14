@@ -17,7 +17,10 @@ import {
   Search,
   Settings2,
   Square,
+  Tag,
   Trash2,
+  X,
+  User,
 } from "lucide-react";
 import { marked } from "marked";
 import otterLogo from "./assets/otter.png";
@@ -25,11 +28,11 @@ import { kindFromPath, ArtifactCard } from "./components/ArtifactCard";
 import { ActivityTimeline } from "./components/ActivityTimeline";
 import { ConfirmDialog, type ConfirmRequest } from "./components/ConfirmDialog";
 import { StreamingMarkdown } from "./components/StreamingMarkdown";
-import type { Artifact, CatalogProvider, ModelProfile, ProtocolEvent, ToolStep } from "@office/contracts";
+import type { Artifact, CatalogProvider, ModelProfile, ProtocolEvent, TagRecord, ToolStep, WorkspaceRecord } from "@office/contracts";
 import { Button } from "./components/Button";
 import { Composer, UNGROUPED, type WorkspaceOption } from "./components/Composer";
 import { ModelMenu } from "./components/ModelMenu";
-import { Settings, type Theme } from "./components/Settings";
+import { Settings, type Theme, type UserProfile } from "./components/Settings";
 import { WindowControls } from "./components/WindowControls";
 import { previewClient } from "./lib/preview-client";
 import {
@@ -45,6 +48,7 @@ import {
   type PermissionMode,
 } from "./lib/protocol-client";
 
+const UNCATEGORIZED = "__uncategorized__";
 
 
 export function App() {
@@ -54,12 +58,13 @@ export function App() {
   const [providers, setProviders] = useState<CatalogProvider[]>([]);
 
   const [sessions, setSessions] = useState<UiSession[]>([newBlank()]);
-  const [workspaces, setWorkspaces] = useState<{ id: string; name: string }[]>(() =>
-    load("office.workspaces", []),
-  );
+  const [workspaces, setWorkspaces] = useState<WorkspaceRecord[]>(() => loadWorkspaces());
   const [groups, setGroups] = useState<Record<string, string>>(() =>
     load("office.sessionGroups", {}),
   );
+  const [tags, setTags] = useState<TagRecord[]>(() => load("office.tags", []));
+  const [sessionTags, setSessionTags] = useState<Record<string, string[]>>(() => load("office.sessionTags", {}));
+  const [scope, setScope] = useState<{ kind: "all" | "tagged" | "tag"; id?: string }>({ kind: "all" });
   const [draftGroup, setDraftGroup] = useState<string>(() => load("office.lastGroup", UNGROUPED));
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(() =>
     load<PermissionMode>("office.permissionMode", "ask"),
@@ -87,16 +92,24 @@ export function App() {
     [settings, setSettings] = useState(false),
     [collapsed, setCollapsed] = useState(false),
     [copied, setCopied] = useState("");
+  const [collapsedTags, setCollapsedTags] = useState<string[]>([]);
   const [collapsedWs, setCollapsedWs] = useState<string[]>([]);
   const [menu, setMenu] = useState<
-    | { kind: "session"; id: string; move?: boolean; newWs?: boolean; rename?: boolean }
-    | { kind: "workspace"; id: string; rename?: boolean }
+    | { kind: "session"; id: string; move?: boolean; tags?: boolean; rename?: boolean; x?: number; y?: number }
+    | { kind: "workspace"; id: string; rename?: boolean; x?: number; y?: number }
     | null
   >(null);
-  const [wsForm, setWsForm] = useState(false);
-  const [wsFormName, setWsFormName] = useState("");
+  const [workspacePickerError, setWorkspacePickerError] = useState("");
+  const [tagManager, setTagManager] = useState(false);
+  const [newTagName, setNewTagName] = useState("");
+  const [tagManagerError, setTagManagerError] = useState("");
+  const [editingTagId, setEditingTagId] = useState<string | null>(null);
 
   const [theme, setTheme] = useState<Theme>(() => load("office.theme", "light"));
+  const [userProfile, setUserProfile] = useState<UserProfile>(loadUserProfile);
+  const [enabledModels, setEnabledModels] = useState<Record<string, string[]>>(() =>
+    load("office.enabledModels", {}),
+  );
   const [profile] = useState<ModelProfile>(() =>
     load("office.profile", {
       provider: "deepseek",
@@ -177,9 +190,21 @@ export function App() {
         setMode("live");
         await refreshSessions();
         try {
-          setProviders(
-            (await client.current.request("config.providers")) as CatalogProvider[],
-          );
+          const list = (await client.current.request("config.providers")) as CatalogProvider[];
+          setProviders(list);
+          // 没有选中模型时，默认选第一个已配置厂商的首个模型，
+          // 避免输入区模型按钮一开始是空的。
+          setSelection((cur) => {
+            if (cur.modelId) return cur;
+            const ready = list.find((p) => p.auth === "ready" && p.models.length > 0);
+            if (!ready) return cur;
+            return {
+              ...cur,
+              providerId: ready.id,
+              providerName: ready.name,
+              modelId: ready.models[0].id,
+            };
+          });
         } catch {
           // 目录拉取失败不阻塞使用
         }
@@ -237,11 +262,15 @@ export function App() {
   useEffect(() => {
     localStorage.setItem("office.workspaces", JSON.stringify(workspaces));
     localStorage.setItem("office.sessionGroups", JSON.stringify(groups));
+    localStorage.setItem("office.tags", JSON.stringify(tags));
+    localStorage.setItem("office.sessionTags", JSON.stringify(sessionTags));
     localStorage.setItem("office.lastGroup", JSON.stringify(draftGroup));
     localStorage.setItem("office.permissionMode", JSON.stringify(permissionMode));
-  }, [workspaces, groups, draftGroup, permissionMode]);
+  }, [workspaces, groups, tags, sessionTags, draftGroup, permissionMode]);
   useEffect(() => {
     localStorage.setItem("office.theme", JSON.stringify(theme));
+    localStorage.setItem("office.userProfile", JSON.stringify(userProfile));
+    localStorage.setItem("office.enabledModels", JSON.stringify(enabledModels));
     const m = matchMedia("(prefers-color-scheme: dark)");
     const apply = () =>
       (document.documentElement.dataset.theme =
@@ -249,7 +278,7 @@ export function App() {
     apply();
     m.addEventListener("change", apply);
     return () => m.removeEventListener("change", apply);
-  }, [theme]);
+  }, [theme, userProfile, enabledModels]);
   useEffect(() => {
     // 跟随滚动：内容任何变化（流式增量、工具行、产物卡、过程折叠）都把视图钉在底部，
     // 用户上滚后交出控制权。ResizeObserver 覆盖依赖数组抓不到的"同一条消息长高"。
@@ -268,11 +297,12 @@ export function App() {
   useEffect(() => () => controller.current?.abort(), []);
   useWindowDrag();
 
-  function create() {
+  function create(workspaceId = UNGROUPED) {
     const blank = newBlank();
     setSessions((all) => [blank, ...all.filter((s) => s.listed !== false || s.messages.length > 0)]);
     setActive(blank.id);
     setDraft("");
+    setDraftGroup(workspaceId);
     setMenu(null);
     follow.current = true;
     input.current?.focus();
@@ -282,8 +312,20 @@ export function App() {
     setSessions((all) => all.map((s) => (s.id === id ? fn(s) : s)));
   }
 
-  function createWorkspace(name: string): string {
-    const ws = { id: `ws-${crypto.randomUUID().slice(0, 8)}`, name };
+  async function createWorkspace() {
+    setWorkspacePickerError("");
+    let folderPath: string | null;
+    try {
+      folderPath = await pickWorkspaceFolder();
+    } catch (err) {
+      setWorkspacePickerError(err instanceof Error ? err.message : "无法打开文件夹选择器");
+      return;
+    }
+    if (!folderPath) return;
+    const name = folderPath.split(/[\\/]/).filter(Boolean).pop() ?? folderPath;
+    const existing = workspaces.find((w) => w.folderPath === folderPath);
+    if (existing) return existing.id;
+    const ws = { id: `ws-${crypto.randomUUID().slice(0, 8)}`, name, folderPath };
     setWorkspaces((all) => [...all, ws]);
     return ws.id;
   }
@@ -298,6 +340,19 @@ export function App() {
     if (draftGroup === wsId) setDraftGroup(UNGROUPED);
   }
 
+  function moveSessionToWorkspace(sessionId: string, workspaceId?: string) {
+    setGroups((all) => {
+      const next = { ...all };
+      if (workspaceId) next[sessionId] = workspaceId;
+      else delete next[sessionId];
+      return next;
+    });
+    if (isLive && sessionId === session.id) {
+      const workspace = workspaces.find((item) => item.id === workspaceId);
+      void client.current.request("session.setCwd", workspace ? { cwd: workspace.folderPath } : {}).catch(() => {});
+    }
+  }
+
   async function openSession(target: UiSession) {
     setActive(target.id);
     setMenu(null);
@@ -307,7 +362,11 @@ export function App() {
       if (openingSessions.current.has(target.file)) return;
       openingSessions.current.add(target.file);
       try {
-        const snap = (await client.current.request("session.open", { file: target.file })) as {
+        const targetWorkspace = workspaces.find((workspace) => workspace.id === groups[target.id]);
+        const snap = (await client.current.request("session.open", {
+          file: target.file,
+          ...(targetWorkspace ? { cwd: targetWorkspace.folderPath } : {}),
+        })) as {
           messages: {
             role: string;
             text: string;
@@ -350,12 +409,14 @@ export function App() {
       });
     }
     const mid = crypto.randomUUID();
+    // 标题只取用户原始输入，且仅在会话首条消息时生成；重试/继续沿用已有标题。
+    const newTitle = session.messages.length ? undefined : createSessionTitle(text);
     setDraft("");
     follow.current = true;
     update(id, (s) => ({
       ...s,
       listed: true,
-      title: s.messages.length ? s.title : text.slice(0, 24),
+      title: s.messages.length ? s.title : newTitle ?? s.title,
       loaded: true,
       messages: [
         ...s.messages,
@@ -397,7 +458,10 @@ export function App() {
       const target = sessions.find((s) => s.id === id);
       if (!target?.file) {
         try {
-          const created = (await client.current.request("session.new")) as { file: string };
+          const selectedWorkspace = workspaces.find((w) => w.id === draftGroup);
+          const created = (await client.current.request("session.new", {
+            ...(selectedWorkspace ? { cwd: selectedWorkspace.folderPath } : {}),
+          })) as { file: string };
           update(id, (s) => ({ ...s, file: created.file, id: created.file, listed: true }));
           setActive(created.file);
           if (draftGroup !== UNGROUPED) {
@@ -430,6 +494,7 @@ export function App() {
           modelId: selection.modelId || undefined,
           thinkingLevel: effectiveThinking,
           permissionMode,
+          ...(newTitle && !target?.file ? { sessionTitle: newTitle } : {}),
         });
         const runId = typeof started === "string" ? started : (started as { runId?: string })?.runId;
         if (runId) {
@@ -533,11 +598,33 @@ export function App() {
   }
 
   const isLive = mode === "live";
-  const visible = sessions.filter(
+  const allVisible = sessions.filter(
     (s) => s.listed !== false && s.title.toLowerCase().includes(query.toLowerCase()),
   );
-  const wsItems = (wsId: string) => visible.filter((s) => groups[s.id] === wsId);
-  const ungrouped = visible.filter((s) => !groups[s.id]);
+  const visible = allVisible.filter((s) => {
+    if (scope.kind === "tag") return sessionTags[s.id]?.includes(scope.id ?? "") ?? false;
+    return true;
+  });
+  const wsItems = (wsId: string) => allVisible.filter((s) => groups[s.id] === wsId);
+  const pinnedTags = tags.filter((t) => t.pinned).slice(0, 3);
+  const uncategorized = allVisible.filter((s) => !(sessionTags[s.id]?.length));
+  function addTag(name: string): boolean {
+    const clean = name.trim();
+    if (!clean) return false;
+    if (tags.some((t) => t.name === clean)) {
+      setTagManagerError("标签名称已存在");
+      return false;
+    }
+    setTags((all) => [...all, { id: `tag-${crypto.randomUUID().slice(0, 8)}`, name: clean }]);
+    setTagManagerError("");
+    return true;
+  }
+  function toggleTag(sessionId: string, tagId: string) {
+    setSessionTags((all) => {
+      const current = all[sessionId] ?? [];
+      return { ...all, [sessionId]: current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId] };
+    });
+  }
   const empty = session.messages.length === 0;
   // 本会话产物（Header 工作空间浮层用）：同路径取最后一次
   const sessionArtifacts = (() => {
@@ -545,8 +632,10 @@ export function App() {
     for (const m of session.messages) for (const a of m.artifacts ?? []) map.set(a.path, a);
     return [...map.values()].slice(-5);
   })();
-  const workspaceName = handshake?.cwd
-    ? handshake.cwd.split(/[\\/]/).filter(Boolean).pop() ?? handshake.cwd
+  const activeWorkspace = workspaces.find((workspace) => workspace.id === groups[session.id]);
+  const sessionCwd = activeWorkspace?.folderPath;
+  const workspaceName = sessionCwd
+    ? sessionCwd.split(/[\\/]/).filter(Boolean).pop() ?? sessionCwd
     : "";
   const supportsReasoning = isLive
     ? (providers
@@ -594,7 +683,7 @@ export function App() {
     workspaces,
     draftGroup,
     onDraftGroup: setDraftGroup,
-    onCreateGroup: createWorkspace,
+    onChooseWorkspaceFolder: createWorkspace,
     permissionMode,
     onPermissionMode: setPermissionMode,
     attachments,
@@ -610,6 +699,7 @@ export function App() {
     onClearImportError: () => setImportError(""),
 
     providers,
+    enabledModels,
     selection,
     onSelectModel: setSelection,
     onOpenSettings: () => setSettings(true),
@@ -622,11 +712,26 @@ export function App() {
     setSelection((s) => ({ ...s, thinkingLevel: v }));
   }
 
+  /** 右键菜单坐标：跟随指针，并在窗口边界内钳制，避免菜单被裁掉。 */
+  function contextMenuPoint(e: React.MouseEvent) {
+    return {
+      x: Math.max(8, Math.min(e.clientX, window.innerWidth - 190)),
+      y: Math.max(8, Math.min(e.clientY, window.innerHeight - 180)),
+    };
+  }
+
   function sessionRow(s: UiSession, indent?: boolean) {
     const menuOpen = menu?.kind === "session" && menu.id === s.id;
     const grouped = groups[s.id];
     return (
-      <div className={"session-row" + (indent ? " indent" : "") + (session.id === s.id ? " active" : "")} key={s.id}>
+      <div
+        className={"session-row" + (indent ? " indent" : "") + (session.id === s.id ? " active" : "")}
+        key={s.id}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setMenu({ kind: "session", id: s.id, ...contextMenuPoint(e) });
+        }}
+      >
         <button className="session-main" onClick={() => void openSession(s)}>
           <MessageSquare size={15} />
           <span>{s.title}</span>
@@ -644,18 +749,11 @@ export function App() {
           <MoreHorizontal size={14} />
         </button>
         {menuOpen && menu?.kind === "session" && (
-          <div className="session-menu row-menu">
-            {menu.newWs ? (
-              <MenuInput
-                placeholder="工作空间名称"
-                onConfirm={(name) => {
-                  const wsId = createWorkspace(name);
-                  setGroups((g) => ({ ...g, [s.id]: wsId }));
-                  setMenu(null);
-                }}
-                onCancel={() => setMenu({ kind: "session", id: s.id, move: true })}
-              />
-            ) : menu.rename ? (
+          <div
+            className={"session-menu row-menu" + (menu.x != null ? " row-menu-floating" : "")}
+            style={menu.x != null ? { left: menu.x, top: menu.y } : undefined}
+          >
+            {menu.rename ? (
               <MenuInput
                 initial={s.title}
                 placeholder="会话名称"
@@ -675,11 +773,7 @@ export function App() {
               <>
                 {grouped && (
                   <button onClick={() => {
-                    setGroups((g) => {
-                      const next = { ...g };
-                      delete next[s.id];
-                      return next;
-                    });
+                    moveSessionToWorkspace(s.id);
                     setMenu(null);
                   }}>
                     未分组
@@ -689,15 +783,28 @@ export function App() {
                   .filter((w) => w.id !== grouped)
                   .map((w) => (
                     <button key={w.id} onClick={() => {
-                      setGroups((g) => ({ ...g, [s.id]: w.id }));
+                      moveSessionToWorkspace(s.id, w.id);
                       setMenu(null);
                     }}>
                       {w.name}
                     </button>
                   ))}
-                <button onClick={() => setMenu({ kind: "session", id: s.id, newWs: true })}>
-                  <Plus size={13} /> 新建工作空间
+                <button onClick={() => void createWorkspace().then((id) => {
+                  if (id) moveSessionToWorkspace(s.id, id);
+                  setMenu(null);
+                })}>
+                  <Plus size={13} /> 选择其他文件夹
                 </button>
+              </>
+            ) : menu.tags ? (
+              <>
+                {tags.length ? tags.map((tag) => {
+                  const selected = sessionTags[s.id]?.includes(tag.id);
+                  return <button key={tag.id} className={selected ? "current" : ""} onClick={() => toggleTag(s.id, tag.id)}>
+                    <Tag size={13} /> <span>{tag.name}</span>{selected ? <Check size={13} /> : null}
+                  </button>;
+                }) : <p className="menu-empty">还没有标签</p>}
+                <button onClick={() => { setTagManager(true); setMenu(null); }}><Plus size={13} /> 管理标签</button>
               </>
             ) : (
               <>
@@ -706,6 +813,9 @@ export function App() {
                 </button>
                 <button onClick={() => setMenu({ kind: "session", id: s.id, move: true })}>
                   <Folder size={13} /> 移动到工作空间
+                </button>
+                <button onClick={() => setMenu({ kind: "session", id: s.id, tags: true })}>
+                  <Tag size={13} /> 添加标签
                 </button>
                 <button
                   onClick={() => {
@@ -759,9 +869,9 @@ export function App() {
             <PanelLeftClose size={17} />
           </Button>
         </div>
-        <Button className="new-chat" onClick={create}>
+        <Button className="new-chat" onClick={() => create()}>
           <Plus size={17} />
-          新建会话<span>＋</span>
+          新建会话
         </Button>
         <div className="search-box">
           <Search size={15} />
@@ -776,58 +886,13 @@ export function App() {
         <div className="ws-anchor">
           <div className="section-label">
             工作空间
-            <button aria-label="新建工作空间" onClick={() => setWsForm(!wsForm)}>
-              <Plus size={13} />
-            </button>
+            <span className="section-actions">
+              <button aria-label="添加工作空间" onClick={() => void createWorkspace()}>
+                <Plus size={13} />
+              </button>
+            </span>
           </div>
-          {wsForm && (
-            <>
-              <div className="menu-overlay" onClick={() => setWsForm(false)} />
-              <div className="session-menu ws-pop">
-                <input
-                  autoFocus
-                  placeholder="工作空间名称"
-                  value={wsFormName}
-                  onChange={(e) => setWsFormName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && wsFormName.trim()) {
-                      createWorkspace(wsFormName.trim());
-                      setWsFormName("");
-                      setWsForm(false);
-                    }
-                    if (e.key === "Escape") {
-                      setWsFormName("");
-                      setWsForm(false);
-                    }
-                  }}
-                />
-                <div className="ws-pop-actions">
-                  <button
-                    className="ws-cancel"
-                    onClick={() => {
-                      setWsFormName("");
-                      setWsForm(false);
-                    }}
-                  >
-                    取消
-                  </button>
-                  <button
-                    className="ws-confirm"
-                    disabled={!wsFormName.trim()}
-                    onClick={() => {
-                      if (wsFormName.trim()) {
-                        createWorkspace(wsFormName.trim());
-                        setWsFormName("");
-                        setWsForm(false);
-                      }
-                    }}
-                  >
-                    创建
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
+          {workspacePickerError && <p className="workspace-picker-error">{workspacePickerError}</p>}
         </div>
         <nav className="session-list">
           {mode === "connecting" && (
@@ -844,20 +909,34 @@ export function App() {
           )}
           {workspaces.map((w) => {
             const items = wsItems(w.id);
-            const fold = collapsedWs.includes(w.id);
+            const folded = collapsedWs.includes(w.id);
             const wsMenuOpen = menu?.kind === "workspace" && menu.id === w.id;
             return (
-              <div key={w.id}>
-                <div className="session-row ws-row">
+              <div className="ws-group" key={w.id}>
+              <div
+                className={"session-row ws-row" + (draftGroup === w.id ? " active" : "")}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setMenu({ kind: "workspace", id: w.id, ...contextMenuPoint(e) });
+                }}
+              >
                   <button
-                    className="session-main ws-main"
+                    className="ws-toggle"
+                    aria-label={folded ? "展开工作空间会话" : "收起工作空间会话"}
+                    aria-expanded={!folded}
                     onClick={() =>
                       setCollapsedWs((all) =>
                         all.includes(w.id) ? all.filter((x) => x !== w.id) : [...all, w.id],
                       )
                     }
                   >
-                    {fold ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                    {folded ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+                  </button>
+                  <button
+                    className="session-main ws-main"
+                    title={w.folderPath}
+                    onClick={() => create(w.id)}
+                  >
                     <Folder size={14} />
                     <span>{w.name}</span>
                     <em>{items.length}</em>
@@ -873,7 +952,10 @@ export function App() {
                     <MoreHorizontal size={14} />
                   </button>
                   {wsMenuOpen && menu?.kind === "workspace" && (
-                    <div className="session-menu row-menu">
+                    <div
+                      className={"session-menu row-menu" + (menu.x != null ? " row-menu-floating" : "")}
+                      style={menu.x != null ? { left: menu.x, top: menu.y } : undefined}
+                    >
                       {menu.rename ? (
                         <MenuInput
                           initial={w.name}
@@ -910,23 +992,109 @@ export function App() {
                       )}
                     </div>
                   )}
-                </div>
-                {!fold && items.map((s) => sessionRow(s, true))}
+              </div>
+              {!folded && scope.kind === "all" && items.map((s) => sessionRow(s, true))}
               </div>
             );
           })}
 
           <div className="section-label in-list">
-            会话 <span>{ungrouped.length}</span>
+            会话 <span>{visible.length}</span>
           </div>
-          {ungrouped.map((s) => sessionRow(s))}
+          <div className="session-filters">
+            <button className={scope.kind === "all" ? "active" : ""} onClick={() => setScope({ kind: "all" })}>所有</button>
+            <button className={scope.kind === "tagged" ? "active" : ""} onClick={() => setScope({ kind: "tagged" })}>标签</button>
+            {pinnedTags.map((tag) => <button key={tag.id} className={scope.kind === "tag" && scope.id === tag.id ? "active" : ""} onClick={() => setScope({ kind: "tag", id: tag.id })}>{tag.name}</button>)}
+          </div>
+          {scope.kind === "tagged" ? (
+            <div className="tagged-sessions">
+              {tags.map((tag) => {
+                const tagged = allVisible.filter((s) => sessionTags[s.id]?.includes(tag.id));
+                const folded = collapsedTags.includes(tag.id);
+                return tagged.length ? <div key={tag.id}><button className="tag-group-title" onClick={() => setCollapsedTags((all) => folded ? all.filter((id) => id !== tag.id) : [...all, tag.id])}>{folded ? <ChevronRight size={13} /> : <ChevronDown size={13} />}<Tag size={13} /> {tag.name} <span>{tagged.length}</span></button>{!folded && tagged.map((s) => sessionRow(s, true))}</div> : null;
+              })}
+              {uncategorized.length ? <div><button className="tag-group-title" onClick={() => setCollapsedTags((all) => all.includes(UNCATEGORIZED) ? all.filter((id) => id !== UNCATEGORIZED) : [...all, UNCATEGORIZED])}>{collapsedTags.includes(UNCATEGORIZED) ? <ChevronRight size={13} /> : <ChevronDown size={13} />}未分类 <span>{uncategorized.length}</span></button>{!collapsedTags.includes(UNCATEGORIZED) && uncategorized.map((s) => sessionRow(s, true))}</div> : null}
+            </div>
+          ) : scope.kind === "all" ? (
+            visible.filter((s) => !groups[s.id]).map((s) => sessionRow(s))
+          ) : (
+            visible.map((s) => sessionRow(s))
+          )}
           {query && !visible.length && <p className="no-results">没有找到相关会话</p>}
         </nav>
 
+        <div className="tag-manager-anchor">
+          <button className="settings-link" onClick={() => { setTagManager(true); setTagManagerError(""); }}>
+            <Tag size={16} /> 管理标签
+          </button>
+        </div>
+
+        {tagManager && (
+          <>
+            <div className="menu-overlay tag-manager-backdrop" onClick={() => setTagManager(false)} />
+            <section className="app-dialog tag-manager-dialog" role="dialog" aria-modal="true" aria-labelledby="tag-manager-title">
+              <header>
+                <div>
+                  <h2 id="tag-manager-title">管理标签</h2>
+                  <p>给会话添加标签，常用标签会显示在会话列表顶部。</p>
+                </div>
+                <button className="tag-manager-close" aria-label="关闭标签管理" onClick={() => setTagManager(false)}><X size={16} /></button>
+              </header>
+              <div className="tag-manager-list">
+              {tags.length === 0 && <p className="tag-manager-empty">还没有标签，在下方创建第一个标签。</p>}
+              {tags.map((tag) => (
+                <div className="tag-manager-row" key={tag.id}>
+                  <Tag size={13} />
+                  {editingTagId === tag.id ? <input autoFocus defaultValue={tag.name} onKeyDown={(e) => {
+                    if (e.key === "Enter" && e.currentTarget.value.trim()) {
+                      const name = e.currentTarget.value.trim();
+                      if (!tags.some((item) => item.id !== tag.id && item.name === name)) setTags((all) => all.map((item) => item.id === tag.id ? { ...item, name } : item));
+                      setEditingTagId(null);
+                    }
+                    if (e.key === "Escape") setEditingTagId(null);
+                  }} /> : <span>{tag.name}</span>}
+                  <button aria-label="重命名标签" onClick={() => setEditingTagId(tag.id)}><Pencil size={13} /></button>
+                  <button className={tag.pinned ? "pinned" : ""} aria-label={tag.pinned ? "取消常用" : "设为常用"} onClick={() => setTags((all) => {
+                    if (!tag.pinned && all.filter((item) => item.pinned).length >= 3) return all;
+                    return all.map((item) => item.id === tag.id ? { ...item, pinned: !item.pinned } : item);
+                  })}>★</button>
+                  <button aria-label="删除标签" onClick={() => {
+                    setTags((all) => all.filter((item) => item.id !== tag.id));
+                    setSessionTags((all) => Object.fromEntries(Object.entries(all).map(([id, values]) => [id, values.filter((value) => value !== tag.id)])));
+                    if (scope.kind === "tag" && scope.id === tag.id) setScope({ kind: "all" });
+                  }}><Trash2 size={13} /></button>
+                </div>
+              ))}
+              </div>
+              <form className="tag-create-form" onSubmit={(e) => {
+                e.preventDefault();
+                if (addTag(newTagName)) setNewTagName("");
+              }}>
+                <label htmlFor="new-tag-name">新建标签</label>
+                <div>
+                  <input id="new-tag-name" autoFocus value={newTagName} placeholder="例如：工作" onChange={(e) => { setNewTagName(e.target.value); setTagManagerError(""); }} />
+                  <button type="submit" disabled={!newTagName.trim()}><Plus size={14} /> 创建</button>
+                </div>
+                {tagManagerError && <p className="tag-create-error">{tagManagerError}</p>}
+                <small>最多可将三个标签设为常用。</small>
+              </form>
+            </section>
+          </>
+        )}
+
         <div className="sidebar-bottom">
-          <button className="settings-link" onClick={() => setSettings(true)}>
-            <Settings2 size={17} />
-            设置
+          <button className="user-chip" onClick={() => setSettings(true)} title="个人资料与设置">
+            <span className="user-avatar">
+              {userProfile.avatar ? (
+                <img src={userProfile.avatar} alt="" />
+              ) : userProfile.name.trim() ? (
+                userProfile.name.trim()[0].toUpperCase()
+              ) : (
+                <User size={14} />
+              )}
+            </span>
+            <span className="user-chip-name">{userProfile.name.trim() || "你"}</span>
+            <Settings2 size={15} />
           </button>
         </div>
       </aside>
@@ -957,12 +1125,12 @@ export function App() {
                 );
               return null;
             })()}
-            {isLive && handshake?.cwd && (
+            {isLive && sessionCwd && (
               <div className="group-anchor ws-chip-anchor">
                 <button
                   className={"ws-chip" + (wsPop ? " open" : "")}
                   onClick={() => setWsPop(!wsPop)}
-                  title={handshake.cwd}
+                  title={sessionCwd}
                 >
                   <Folder size={13} />
                   {workspaceName}
@@ -971,12 +1139,12 @@ export function App() {
                   <>
                     <div className="menu-overlay" onClick={() => setWsPop(false)} />
                     <div className="session-menu ws-pop">
-                      <div className="ws-pop-path">{handshake.cwd}</div>
+                      <div className="ws-pop-path">{sessionCwd}</div>
                       <div className="ws-pop-actions">
                         <button
                           onClick={() =>
                             void client.current
-                              .request("os.open", { path: handshake.cwd })
+                              .request("os.open", { path: sessionCwd })
                               .catch(() => {})
                           }
                         >
@@ -984,7 +1152,7 @@ export function App() {
                         </button>
                         <button
                           onClick={() =>
-                            void navigator.clipboard.writeText(handshake.cwd).catch(() => {})
+                            void navigator.clipboard.writeText(sessionCwd).catch(() => {})
                           }
                         >
                           <Copy size={13} /> 复制路径
@@ -1068,9 +1236,17 @@ export function App() {
                   <article key={m.id} className={"message " + m.role}>
                     {m.role === "user" ? (
                       <>
-                        <span className="message-avatar">L</span>
+                        <span className="message-avatar">
+                          {userProfile.avatar ? (
+                            <img src={userProfile.avatar} alt="" />
+                          ) : userProfile.name.trim() ? (
+                            userProfile.name.trim()[0].toUpperCase()
+                          ) : (
+                            <User size={14} />
+                          )}
+                        </span>
                         <div>
-                          <div className="message-label">你</div>
+                          <div className="message-label">{userProfile.name.trim() || "你"}</div>
                           <p>{finalAnswer(m)}</p>
                         </div>
                       </>
@@ -1210,6 +1386,10 @@ export function App() {
           selection={selection}
           onSelection={setSelection}
           handshake={handshake}
+          userProfile={userProfile}
+          onUserProfile={setUserProfile}
+          enabledModels={enabledModels}
+          onEnabledModels={setEnabledModels}
         />
 
         <ConfirmDialog request={confirmRequest} onCancel={() => setConfirmRequest(null)} />
@@ -1446,6 +1626,37 @@ function load<T>(key: string, fallback: T): T {
   }
 }
 
+/**
+ * 会话标题：只基于用户第一条原始输入生成，不调用模型、不含权限指令与附件引用块。
+ * 中文按 24 字、其他语言按 56 字符截断。
+ */
+function createSessionTitle(text: string): string {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  const maxChars = /[\u4e00-\u9fff]/.test(cleaned) ? 24 : 56;
+  return cleaned.length > maxChars ? `${cleaned.slice(0, maxChars).trim()}…` : cleaned;
+}
+
+function loadWorkspaces(): WorkspaceRecord[] {
+  const stored = load<Array<Partial<WorkspaceRecord>>>("office.workspaces", []);
+  // 旧的“分组”没有目录，不能伪装成 Workspace；保留其 Session 关联，待用户重新选择目录后使用。
+  return stored.filter((item): item is WorkspaceRecord =>
+    typeof item.id === "string" && typeof item.name === "string" && typeof item.folderPath === "string" && Boolean(item.folderPath),
+  );
+}
+
+/** 用户资料：默认用户名 Leon；历史上写入空值的记录也回落为 Leon。 */
+function loadUserProfile(): UserProfile {
+  const stored = load<UserProfile>("office.userProfile", { name: "Leon" });
+  const name = typeof stored?.name === "string" && stored.name.trim() ? stored.name : "Leon";
+  return { ...stored, name };
+}
+
+async function pickWorkspaceFolder(): Promise<string | null> {
+  const internals = (window as unknown as { __TAURI_INTERNALS__?: { invoke: (cmd: string) => Promise<string | null> } }).__TAURI_INTERNALS__;
+  if (!internals) throw new Error("选择本地文件夹需要在桌面应用中完成");
+  return internals.invoke("pick_folder");
+}
+
 function relTime(iso: string | undefined): string {
   if (!iso) return "";
   const diff = Date.now() - new Date(iso).getTime();
@@ -1460,12 +1671,13 @@ function relTime(iso: string | undefined): string {
 }
 
 function greeting(): string {
-  const h = new Date().getHours();
-  if (h < 5) return "夜深了";
-  if (h < 11) return "早上好";
-  if (h < 13) return "中午好";
-  if (h < 18) return "下午好";
-  return "晚上好";
+  const now = new Date();
+  const h = now.getHours() + now.getMinutes() / 60;
+  if (h >= 6 && h < 12) return "早上好，来杯 Coffee 再开干？";
+  if (h >= 12 && h < 14) return "中午啦，休息会吧";
+  if (h >= 14 && h < 17.5) return "下午好，要出去溜达一圈吗？";
+  if (h >= 17.5 && h < 18.5) return "准备，收拾好包～";
+  return "晚上好，有工作交给我吧，别卷了～";
 }
 
 export type UiActivity =

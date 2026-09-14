@@ -128,4 +128,4 @@
 1. 正文内容缩窄（max-width ≈ 820px）
 2. 降低大 Card 感（Tool 行单行紧凑 + Timeline 左线风格）
 3. 默认 HTML 表格重做（表头轻灰底、仅横向分隔线、行高 32–36px）
-4. 提升 Sidebar / Header / 正文层级差（Header ≤52px、Sidebar 232px、背景分层）
+4. 提升 Sidebar / Header / 正文层级差（Header ≤52px、Sidebar 264px、背景分层）

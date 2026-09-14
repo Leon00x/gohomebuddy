@@ -15,7 +15,7 @@
         "title": "GoHomeBuddy · 下班搭子",
         "width": 1280,
         "height": 860,
-        "minWidth": 960,
+        "minWidth": 760,
         "minHeight": 640,
         "decorations": false,
         "shadow": true,

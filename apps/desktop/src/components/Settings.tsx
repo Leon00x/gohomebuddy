@@ -9,14 +9,47 @@ import {
   Check,
   LoaderCircle,
   ChevronDown,
+  ChevronRight,
   Plus,
+  User,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CatalogProvider, ModelProfile } from "@office/contracts";
 import { Button } from "./Button";
 import type { ModelSelection, ProtocolClient } from "../lib/protocol-client";
 
 export type Theme = "light" | "dark" | "system";
+
+/** 用户资料：仅本地保存，头像以 128px 等比缩放后的 data URL 存储。 */
+export interface UserProfile {
+  name: string;
+  avatar?: string;
+}
+
+async function readAvatarFile(file: File, size = 128): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("读取图片失败"));
+    reader.readAsDataURL(file);
+  });
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("图片解析失败"));
+    el.src = dataUrl;
+  });
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return dataUrl;
+  const scale = Math.max(size / image.width, size / image.height);
+  const w = image.width * scale;
+  const h = image.height * scale;
+  ctx.drawImage(image, (size - w) / 2, (size - h) / 2, w, h);
+  return canvas.toDataURL("image/png");
+}
 
 const CUSTOM_NEW = "__custom__";
 
@@ -39,6 +72,10 @@ export function Settings({
   selection,
   onSelection,
   handshake,
+  userProfile,
+  onUserProfile,
+  enabledModels,
+  onEnabledModels,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -52,8 +89,14 @@ export function Settings({
   selection: ModelSelection;
   onSelection: (v: ModelSelection) => void;
   handshake: { runtime: string; piVersion: string; node: string; agentDir: string; cwd: string } | null;
+  userProfile: UserProfile;
+  onUserProfile: (v: UserProfile) => void;
+  enabledModels: Record<string, string[]>;
+  onEnabledModels: (v: Record<string, string[]>) => void;
 }) {
   const [tab, setTab] = useState("models");
+  const avatarInput = useRef<HTMLInputElement>(null);
+  const [avatarError, setAvatarError] = useState("");
   const [providerOpen, setProviderOpen] = useState(false);
   const [draftProvider, setDraftProvider] = useState(selection.providerId);
   const [draftModel, setDraftModel] = useState(selection.modelId);
@@ -68,6 +111,11 @@ export function Settings({
   const [remoteModels, setRemoteModels] = useState<string[]>([]);
   const [fetching, setFetching] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [selectedModels, setSelectedModels] = useState<string[]>([]);
+  const [moreOpen, setMoreOpen] = useState(false);
+  /** 是否已点过「检测模型」——用于在检测无结果时改为手动输入 */
+  const [detected, setDetected] = useState(false);
+  const [expandedProvider, setExpandedProvider] = useState("");
 
   const isCustomDraft = draftProvider === CUSTOM_NEW;
   const provider = providers.find((p) => p.id === draftProvider);
@@ -90,8 +138,8 @@ export function Settings({
   }
 
   async function fetchModels() {
-    if (!customBase || !key) {
-      setError("先填写 API 地址和 API Key 再获取模型列表");
+    if (!customBase) {
+      setError("先填写 API 地址再获取模型列表");
       return;
     }
     setFetching(true);
@@ -101,6 +149,7 @@ export function Settings({
         (await client.request("config.remoteModels", {
           baseUrl: customBase,
           apiKey: key,
+          providerId: isCustomDraft ? undefined : draftProvider,
         })) as string[],
       );
     } catch (err) {
@@ -151,6 +200,10 @@ export function Settings({
           thinkingLevel: selection.thinkingLevel,
         });
       }
+      const savedId = isCustomDraft ? undefined : draftProvider;
+      if (savedId && selectedModels.length) {
+        onEnabledModels({ ...enabledModels, [savedId]: selectedModels });
+      }
       setKey("");
       setSaved(true);
     } catch (err) {
@@ -158,6 +211,67 @@ export function Settings({
     } finally {
       setSaving(false);
     }
+  }
+
+  /**
+   * 填完 Key 后跑一次模型检测：自定义厂商拉远端 /models 列表，
+   * 内置厂商刷新目录（拿到该厂商已知模型）。
+   */
+  async function detectModels() {
+    setError("");
+    setDetected(true);
+    // 已配置过的厂商可用本机已存密钥重新检测，不必重输 Key。
+    const canUseStoredKey = !isCustomDraft && provider?.auth === "ready";
+    if (!key.trim() && !canUseStoredKey) {
+      setError("先填入 API Key 再检测模型");
+      return;
+    }
+    if (isCustomDraft) {
+      if (!customBase) {
+        setError("先填写 API 地址，再检测模型");
+        return;
+      }
+      await fetchModels();
+      return;
+    }
+    const baseUrl = provider?.baseUrl;
+    if (!baseUrl) {
+      setError("该厂商缺少 API 地址，无法检测模型");
+      return;
+    }
+    setFetching(true);
+    try {
+      const ids = (await client.request("config.remoteModels", {
+        baseUrl,
+        apiKey: key,
+        providerId: draftProvider,
+      })) as string[];
+      if (!ids.length) {
+        setError("没有检测到模型，可手动填写模型 ID");
+        return;
+      }
+      // 写回应用管理的模型配置，之后该厂商的模型就能被选用。
+      await client.request("config.custom.save", {
+        provider: {
+          id: draftProvider,
+          name: provider?.name ?? draftProvider,
+          baseUrl,
+          api: "openai-completions",
+          models: ids.map((id) => ({ id, name: id })),
+        },
+      });
+      await refreshProviders();
+      setSelectedModels(ids.slice(0, 4));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "检测模型失败");
+    } finally {
+      setFetching(false);
+    }
+  }
+
+  function toggleModel(id: string) {
+    setSelectedModels((all) => (all.includes(id) ? all.filter((x) => x !== id) : [...all, id]));
+    setSaved(false);
   }
 
   // 每次打开弹窗都同步当前选中值（从模型菜单切换后设置页要保持一致）
@@ -189,6 +303,7 @@ export function Settings({
             </div>
             {[
               ["models", Server, "模型"],
+              ["profile", User, "个人资料"],
               ["appearance", Palette, "外观"],
               ["runtime", Server, "运行环境"],
             ].map(([id, Icon, label]) => {
@@ -244,6 +359,77 @@ export function Settings({
                     void save();
                   }}
                 >
+                  <div className="model-section">
+                    <div className="model-section-title">已配置</div>
+                    {providers.filter((p) => p.auth === "ready").length === 0 && (
+                      <p className="model-section-empty">还没有已配置的模型，从下面选一个厂商添加。</p>
+                    )}
+                    {providers
+                      .filter((p) => p.auth === "ready")
+                      .map((p) => {
+                        const expanded = expandedProvider === p.id;
+                        const enabled = enabledModels[p.id] ?? p.models.slice(0, 4).map((m) => m.id);
+                        const loadIntoForm = () => {
+                          setDraftProvider(p.id);
+                          setDraftModel(
+                            selection.providerId === p.id ? selection.modelId : p.models[0]?.id ?? "",
+                          );
+                          setSelectedModels(enabled);
+                          setRemoteModels([]);
+                          setSaved(false);
+                          setError("");
+                        };
+                        return (
+                          <div className="configured-group" key={p.id}>
+                            <button
+                              type="button"
+                              className="configured-row"
+                              aria-expanded={expanded}
+                              onClick={() => setExpandedProvider(expanded ? "" : p.id)}
+                            >
+                              <i
+                                className="p-dot"
+                                style={{ background: `hsl(${providerHue(p.id)} 42% 46%)` }}
+                              >
+                                {p.name.slice(0, 1)}
+                              </i>
+                              <span>{p.name}</span>
+                              <small>{enabled.length} 个模型</small>
+                              {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                            </button>
+                            {expanded && (
+                              <div className="configured-models">
+                                {enabled.map((id) => (
+                                  <div className="configured-model" key={id}>
+                                    <span title={id}>{p.models.find((m) => m.id === id)?.name ?? id}</span>
+                                    <button type="button" onClick={loadIntoForm}>
+                                      编辑
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        onEnabledModels({
+                                          ...enabledModels,
+                                          [p.id]: enabled.filter((x) => x !== id),
+                                        })
+                                      }
+                                    >
+                                      删除
+                                    </button>
+                                  </div>
+                                ))}
+                                <button type="button" className="configured-add" onClick={loadIntoForm}>
+                                  <Plus size={12} /> 添加模型
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                    <div className="model-section-title split">添加配置</div>
+                  </div>
+
                   <div className="step-label">
                     <i>1</i> 选择厂商
                   </div>
@@ -350,6 +536,16 @@ export function Settings({
                       {show ? <EyeOff size={16} /> : <Eye size={16} />}
                     </Button>
                   </div>
+                  <button
+                    type="button"
+                    className="fetch-models"
+                    onClick={() => void detectModels()}
+                    disabled={fetching || (!key.trim() && provider?.auth !== "ready")}
+                    title={!key.trim() ? "先填入 API Key" : undefined}
+                  >
+                    {fetching ? <LoaderCircle size={13} className="spin" /> : <ChevronDown size={13} />}
+                    {pillModels.length ? "重新检测模型" : "检测模型"}
+                  </button>
 
                   {isCustomDraft && (
                     <>
@@ -401,33 +597,76 @@ export function Settings({
                   )}
                   {((provider && !isCustomDraft) || remoteModels.length > 0) && (
                     <div className="model-pills">
-                      {(showAll ? pillModels : pillModels.slice(0, 5)).map((m) => (
-                        <button
-                          type="button"
-                          key={m.id}
-                          className={"model-pill" + (currentModel === m.id ? " selected" : "")}
-                          onClick={() => pickModel(m.id)}
-                        >
-                          <span>{m.name}</span>
-                          {m.reasoning ? <i>思考</i> : null}
-                        </button>
-                      ))}
-                      {pillModels.length > 5 && (
-                        <button
-                          type="button"
-                          className="show-all"
-                          onClick={() => setShowAll(!showAll)}
-                        >
-                          {showAll ? "收起" : `显示全部 ${pillModels.length} 个`}
-                        </button>
+                      {(showAll ? pillModels : pillModels.slice(0, 4)).map((m) => {
+                        const multi = !isCustomDraft;
+                        const active = multi ? selectedModels.includes(m.id) : currentModel === m.id;
+                        return (
+                          <button
+                            type="button"
+                            key={m.id}
+                            className={"model-pill" + (active ? " selected" : "")}
+                            onClick={() => {
+                              if (multi) {
+                                toggleModel(m.id);
+                                if (!selectedModels.includes(m.id)) pickModel(m.id);
+                              } else {
+                                pickModel(m.id);
+                              }
+                            }}
+                          >
+                            <span>{m.name}</span>
+                            {m.reasoning ? <i>思考</i> : null}
+                          </button>
+                        );
+                      })}
+                      {pillModels.length > 4 && (
+                        <div className="group-anchor">
+                          <button
+                            type="button"
+                            className="show-all"
+                            onClick={() => setMoreOpen(!moreOpen)}
+                          >
+                            其他 {pillModels.length - 4} 个 <ChevronDown size={12} />
+                          </button>
+                          {moreOpen && (
+                            <>
+                              <div className="menu-overlay" onClick={() => setMoreOpen(false)} />
+                              <div className="session-menu model-more">
+                                {pillModels.slice(4).map((m) => (
+                                  <button
+                                    type="button"
+                                    key={m.id}
+                                    className={selectedModels.includes(m.id) ? "current" : ""}
+                                    onClick={() => {
+                                      toggleModel(m.id);
+                                      pickModel(m.id);
+                                    }}
+                                  >
+                                    <span>{m.name}</span>
+                                    {selectedModels.includes(m.id) && <Check size={13} />}
+                                  </button>
+                                ))}
+                              </div>
+                            </>
+                          )}
+                        </div>
                       )}
                     </div>
+                  )}
+                  {/* 检测不到模型时退化为手动输入模型 ID */}
+                  {!isCustomDraft && pillModels.length === 0 && detected && (
+                    <input
+                      className="inline-field"
+                      value={draftModel}
+                      placeholder="没检测到模型，手动填写模型 ID"
+                      onChange={(e) => setDraftModel(e.target.value)}
+                    />
                   )}
                   {isCustomDraft && remoteModels.length === 0 && (
                     <input
                       className="inline-field"
                       value={customModel}
-                      placeholder="或手动填写模型 ID"
+                      placeholder={detected ? "没检测到模型，手动填写模型 ID" : "或手动填写模型 ID"}
                       onChange={(e) => setCustomModel(e.target.value)}
                     />
                   )}
@@ -459,6 +698,58 @@ export function Settings({
                   </p>
                 </div>
               )
+            ) : tab === "profile" ? (
+              <div className="profile-panel">
+                <label className="profile-field">
+                  <span>用户名</span>
+                  <input
+                    value={userProfile.name}
+                    placeholder="你的名字"
+                    onChange={(e) => onUserProfile({ ...userProfile, name: e.target.value })}
+                  />
+                </label>
+                <div className="profile-field">
+                  <span>头像</span>
+                  <div className="profile-avatar-row">
+                    <span className="user-avatar">
+                      {userProfile.avatar ? (
+                        <img src={userProfile.avatar} alt="" />
+                      ) : userProfile.name.trim() ? (
+                        userProfile.name.trim()[0].toUpperCase()
+                      ) : (
+                        <User size={16} />
+                      )}
+                    </span>
+                    <input
+                      ref={avatarInput}
+                      type="file"
+                      accept="image/*"
+                      className="attach-file-input"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (!file) return;
+                        setAvatarError("");
+                        void readAvatarFile(file)
+                          .then((dataUrl) => onUserProfile({ ...userProfile, avatar: dataUrl }))
+                          .catch((err) => setAvatarError(err instanceof Error ? err.message : "头像设置失败"));
+                      }}
+                    />
+                    <button className="ghost-action" onClick={() => avatarInput.current?.click()}>
+                      选择图片
+                    </button>
+                    {userProfile.avatar && (
+                      <button
+                        className="ghost-action"
+                        onClick={() => onUserProfile({ ...userProfile, avatar: undefined })}
+                      >
+                        移除
+                      </button>
+                    )}
+                  </div>
+                  {avatarError && <p className="profile-error">{avatarError}</p>}
+                </div>
+              </div>
             ) : tab === "appearance" ? (
               <div className="theme-options">
                 {(["light", "dark", "system"] as Theme[]).map((t, i) => (

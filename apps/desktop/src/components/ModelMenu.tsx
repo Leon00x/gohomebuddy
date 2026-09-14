@@ -17,6 +17,7 @@ export function ModelMenu({
   onOpenSettings,
   direction = "up",
   align = "right",
+  enabledModels,
 }: {
   providers: CatalogProvider[];
   selection: ModelSelection;
@@ -24,12 +25,25 @@ export function ModelMenu({
   onOpenSettings: () => void;
   direction?: "up" | "down";
   align?: "left" | "right";
+  enabledModels?: Record<string, string[]>;
 }) {
   const [open, setOpen] = useState(false);
+  // 只列出已配置（有可用密钥）的供应商；设置了「启用模型」时只列这些模型。
+  const configured = providers
+    .filter((p) => p.auth === "ready")
+    .map((p) => {
+      const enabled = enabledModels?.[p.id];
+      return enabled?.length
+        ? { ...p, models: p.models.filter((m) => enabled.includes(m.id)) }
+        : p;
+    })
+    .filter((p) => p.models.length > 0);
   const catalogModel = providers
     .find((p) => p.id === selection.providerId)
     ?.models.find((m) => m.id === selection.modelId);
-  const label = catalogModel?.name ?? selection.modelId ?? "选择模型";
+  // 注意用 || 而不是 ??: selection.modelId 可能是空字符串，
+  // 用 ?? 会让按钮渲染成空白（看起来就是「没有文字」）。
+  const label = catalogModel?.name || selection.modelId || "选择模型";
 
   function pick(providerId: string, providerName: string, modelId: string) {
     onSelect({ providerId, providerName, modelId, thinkingLevel: selection.thinkingLevel });
@@ -69,7 +83,10 @@ export function ModelMenu({
               </button>
             </div>
             <div className="mm-list">
-              {providers.map((p) => (
+              {configured.length === 0 && (
+                <p className="mm-empty">还没有配置模型，先去设置里添加</p>
+              )}
+              {configured.map((p) => (
                 <div key={p.id} className="mm-group">
                   <div className="mm-provider">
                     <i

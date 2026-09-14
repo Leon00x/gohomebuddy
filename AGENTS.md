@@ -21,7 +21,7 @@
 ```sh
 npm run start     # 一键启动：vite(1420) + bridge + sidecar
 npm run dev       # 仅 vite（无引擎时自动预览模式）
-npm run smoke     # sidecar 协议冒烟（14 项，无需 API Key）
+npm run smoke     # sidecar 协议冒烟（17 项，无需 API Key）
 npm run build     # 类型检查 + 生产构建
 OFFICE_AGENT_ROOT=$PWD npm run tauri -w @office/desktop -- build   # 打包 deb
 ```
@@ -50,6 +50,8 @@ OFFICE_AGENT_ROOT=$PWD npm run tauri -w @office/desktop -- build   # 打包 deb
 - sidecar 通过 `PI_CODING_AGENT_DIR` 隔离数据目录；打包二进制的仓库根路径编译期由 `OFFICE_AGENT_ROOT` 固化。
 - 子进程 spawn ENOENT 先查 cwd 是否存在。
 - 新增 UI 浮层注意 z-index：遮罩 30，浮层需 40+，否则菜单会被遮罩吞掉点击。
+- 改 `apps/sidecar` 后必须 `npm run engine` 重编随包引擎：桌面 dev 启动时只把 `src-tauri/binaries/` 复制到 `target/debug/`，不会自动重编，否则界面跑的是旧二进制（表现为新协议命令返回 unknown_method 或行为不一致）。
+- Tailwind preflight 把 `svg` 设为 `display: block`：图标+文字的行内按钮/菜单项必须显式 `display: flex; align-items: center`，否则图标与文字会各占一行。
 
 ## 提交前自检
 

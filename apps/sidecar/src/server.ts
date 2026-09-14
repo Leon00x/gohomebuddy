@@ -32,8 +32,9 @@ export class SidecarServer {
       this.runtime.saveCustomProvider(record(p.provider, "provider")),
     );
     this.handlers.set("session.list", () => this.runtime.listSessions());
-    this.handlers.set("session.new", () => this.runtime.newSession());
-    this.handlers.set("session.open", (p) => this.runtime.openSession(requiredString(p, "file")));
+    this.handlers.set("session.new", (p) => this.runtime.newSession(optionalString(p, "cwd")));
+    this.handlers.set("session.open", (p) => this.runtime.openSession(requiredString(p, "file"), optionalString(p, "cwd")));
+    this.handlers.set("session.setCwd", (p) => this.runtime.setSessionCwd(optionalString(p, "cwd")));
     this.handlers.set("session.rename", (p) =>
       this.runtime.renameSession(requiredString(p, "file"), requiredString(p, "title")),
     );
@@ -45,6 +46,7 @@ export class SidecarServer {
         modelId: optionalString(p, "modelId"),
         thinkingLevel: optionalString(p, "thinkingLevel"),
         permissionMode: optionalString(p, "permissionMode"),
+        sessionTitle: optionalString(p, "sessionTitle"),
       }),
     );
     this.handlers.set("run.followUp", (p) =>
@@ -53,7 +55,8 @@ export class SidecarServer {
     this.handlers.set("config.remoteModels", (p) =>
       this.runtime.fetchRemoteModels(
         requiredString(p, "baseUrl"),
-        requiredString(p, "apiKey"),
+        typeof p.apiKey === "string" ? p.apiKey : "",
+        optionalString(p, "providerId"),
       ),
     );
     this.handlers.set("os.open", (p) =>

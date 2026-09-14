@@ -20,7 +20,7 @@ npm run start     # 一键启动：vite(1420) + dev 桥 + 本地引擎 sidecar�
 npm run dev       # 仅启动界面（无引擎时自动降级为预览演示模式）
 npm run typecheck # TypeScript 类型检查
 npm run build     # 类型检查 + 生产构建（contracts → desktop，含分包）
-npm run smoke     # sidecar 协议冒烟（14 项，无需 API Key）
+npm run smoke     # sidecar 协议冒烟（17 项，无需 API Key）
 npm run desktop   # Tauri 开发窗口（需要 Rust）
 ```
 

@@ -31,18 +31,23 @@ const SYSTEM_PROMPT = `你是 GoHomeBuddy（中文名：下班搭子），运行
 - 不主动提及你底层使用的框架、引擎或模型名称，你的名字是 GoHomeBuddy（下班搭子）。`;
 
 /** Built-in providers surfaced in the settings UI; everything else stays reachable via custom models.json. */
-const CURATED_PROVIDERS: { id: string; name: string }[] = [
-  { id: "deepseek", name: "DeepSeek" },
-  { id: "zhipu", name: "智谱 GLM" },
-  { id: "zai", name: "Z.AI" },
-  { id: "zai-coding-cn", name: "Z.ai Coding (CN)" },
+/**
+ * 厂商预设：只提供名称 / Base URL / 协议，不再自带模型清单。
+ * 所有模型都由「检测模型」或手动输入得到，并写入应用管理的模型配置。
+ */
+const CURATED_PROVIDERS: { id: string; name: string; baseUrl: string; api: string }[] = [
+  { id: "deepseek", name: "DeepSeek", baseUrl: "https://api.deepseek.com/v1", api: "openai-completions" },
+  { id: "zhipu", name: "智谱 GLM", baseUrl: "https://open.bigmodel.cn/api/paas/v4", api: "openai-completions" },
+  { id: "zai", name: "Z.AI", baseUrl: "https://api.z.ai/api/paas/v4", api: "openai-completions" },
+  { id: "zai-coding-cn", name: "Z.ai Coding (CN)", baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4", api: "openai-completions" },
 ];
 
 export type RuntimeEmitter = (type: string, runId: string | undefined, payload: unknown) => void;
 
 export class PiRuntime {
   private readonly agentDir: string;
-  private readonly cwd: string;
+  private cwd: string;
+  private readonly defaultCwd: string;
   private readonly emit: RuntimeEmitter;
   private modelRuntime: ModelRuntime | null = null;
   private session: AgentSession | null = null;
@@ -54,6 +59,7 @@ export class PiRuntime {
   constructor(options: { agentDir: string; cwd: string; emit: RuntimeEmitter }) {
     this.agentDir = options.agentDir;
     this.cwd = options.cwd;
+    this.defaultCwd = options.cwd;
     this.emit = options.emit;
   }
 
@@ -88,10 +94,27 @@ export class PiRuntime {
     const rt = await this.ensureModelRuntime();
     const available = new Set(await this.availableModelKeys(rt));
     const providers: CatalogProvider[] = [];
+    const appManaged = await this.readCustomProviders();
+    // 预设不再读引擎内置目录：模型清单只来自应用管理的配置。
     for (const curated of CURATED_PROVIDERS) {
-      providers.push(await this.describeProvider(rt, curated.id, curated.name, "builtin", available));
+      const entry = appManaged.find((p) => String(p.id) === curated.id);
+      const rawModels = Array.isArray(entry?.models) ? (entry!.models as Record<string, unknown>[]) : [];
+      const models = rawModels.map((m) => toCatalogModel(m, str(m.id)));
+      providers.push({
+        id: curated.id,
+        name: typeof entry?.name === "string" && entry.name ? entry.name : curated.name,
+        origin: "builtin",
+        baseUrl: typeof entry?.baseUrl === "string" && entry.baseUrl ? entry.baseUrl : curated.baseUrl,
+        auth:
+          models.length > 0 &&
+          (models.some((m) => available.has(`${curated.id}:${m.id}`)) || available.has(`${curated.id}:*`))
+            ? "ready"
+            : "missing",
+        models,
+      });
     }
-    for (const custom of await this.readCustomProviders()) {
+    for (const custom of appManaged) {
+      if (CURATED_PROVIDERS.some((p) => p.id === String(custom.id))) continue;
       const rawModels = Array.isArray(custom.models) ? (custom.models as Record<string, unknown>[]) : [];
       const models = rawModels.map((m) => toCatalogModel(m, str(m.id)));
       providers.push({
@@ -150,7 +173,7 @@ export class PiRuntime {
         return {
           file,
           id: str(item.id) || file,
-          title: str(item.name) || str(item.firstMessage).slice(0, 40) || "未命名会话",
+          title: str(item.name) || sanitizeFallbackTitle(str(item.firstMessage)) || "未命名会话",
           modified: modified || new Date(0).toISOString(),
           messageCount: num(item.messageCount) ?? 0,
         } satisfies SessionSummary;
@@ -159,14 +182,25 @@ export class PiRuntime {
       .sort((a, b) => b.modified.localeCompare(a.modified));
   }
 
-  async newSession(): Promise<{ file: string; id: string }> {
+  async newSession(cwd?: string): Promise<{ file: string; id: string; cwd: string }> {
+    if (cwd) this.cwd = nodePath.resolve(cwd);
     await this.replaceSession(await SessionManager.create(this.cwd));
-    return { file: this.sessionFilePath ?? "", id: this.session?.sessionId ?? "" };
+    return { file: this.sessionFilePath ?? "", id: this.session?.sessionId ?? "", cwd: this.cwd };
   }
 
-  async openSession(file: string): Promise<SessionSnapshot> {
+  async openSession(file: string, cwd?: string): Promise<SessionSnapshot> {
+    if (cwd) this.cwd = nodePath.resolve(cwd);
     await this.replaceSession(await SessionManager.open(file));
     return this.snapshot();
+  }
+
+  async setSessionCwd(cwd?: string): Promise<void> {
+    if (this.busy) throw Object.assign(new Error("运行中不能切换工作空间"), { code: "run_already_active" });
+    this.cwd = cwd ? nodePath.resolve(cwd) : this.defaultCwd;
+    if (this.session) {
+      const manager = this.session.sessionManager;
+      await this.replaceSession(manager);
+    }
   }
 
   snapshot(): SessionSnapshot {
@@ -225,10 +259,19 @@ export class PiRuntime {
     modelId?: string;
     thinkingLevel?: string;
     permissionMode?: string;
+    sessionTitle?: string;
   }): Promise<string> {
     if (this.busy) throw Object.assign(new Error("已有任务在运行"), { code: "run_already_active" });
     if (!this.session) await this.newSession();
     const session = this.session!;
+    // 标题只在会话尚无消息时写入一次；手动重命名走 renameSession，优先级更高。
+    if (params.sessionTitle && (session.messages as unknown[]).length === 0) {
+      try {
+        session.sessionManager.appendSessionInfo(params.sessionTitle);
+      } catch {
+        // 标题写入失败不应阻断任务
+      }
+    }
     const rt = await this.ensureModelRuntime();
     if (params.providerId && params.modelId) {
       const model = rt.getModel(params.providerId, params.modelId);
@@ -423,9 +466,20 @@ export class PiRuntime {
   }
 
   /** 用 Key 调 OpenAI 兼容的 /models 接口拉取模型列表。 */
-  async fetchRemoteModels(baseUrl: string, apiKey: string): Promise<string[]> {
+  async fetchRemoteModels(baseUrl: string, apiKey: string, providerId?: string): Promise<string[]> {
+    // 已配置过的厂商允许复用本机密钥重新检测，不必重输 Key。
+    let token = apiKey.trim();
+    if (!token && providerId) {
+      try {
+        const authPath = nodePath.join(this.agentDir, "auth.json");
+        const data = JSON.parse(await readFile(authPath, "utf8")) as Record<string, { key?: string }>;
+        token = data[providerId]?.key ?? "";
+      } catch {
+        token = "";
+      }
+    }
     const url = baseUrl.replace(/\/+$/, "") + "/models";
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}` } });
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) throw new Error(`获取模型列表失败 (HTTP ${res.status})`);
     const data = (await res.json()) as { data?: { id?: string }[] };
     return (data.data ?? [])
@@ -570,6 +624,11 @@ function toCatalogModel(raw: Record<string, unknown>, fallbackId: string): Catal
     id: str(raw.id) || fallbackId,
     name: str(raw.name) || str(raw.id) || fallbackId,
     reasoning: Boolean(raw.reasoning),
+    // 能力元数据由模型配置提供；缺省即未知，界面按不支持处理。
+    ...(Array.isArray(raw.thinkingLevels)
+      ? { thinkingLevels: raw.thinkingLevels.map((x) => str(x)).filter(Boolean) }
+      : {}),
+    ...(typeof raw.multimodal === "boolean" ? { multimodal: raw.multimodal } : {}),
     contextWindow: num(raw.contextWindow) ?? 0,
     maxTokens: num(raw.maxTokens) ?? 0,
   };
@@ -608,4 +667,18 @@ function extractThinking(blocks: unknown[]): string | undefined {
     .filter(Boolean)
     .join("");
   return text || undefined;
+}
+
+/**
+ * 旧会话没有显式标题时用 firstMessage 兜底，但历史数据里可能混入
+ * `[权限模式：…]` 这类内部指令前缀，这里先剥离再截断。
+ */
+function sanitizeFallbackTitle(raw: string): string {
+  // 只剥离已知的内部指令整行（历史数据形如 `[权限模式：…] <说明>`），
+  // 不碰用户自己以方括号开头的正常提问。
+  const withoutDirective = raw.replace(/^\s*\[权限模式：[^\n]*\n?/, "");
+  // 附件引用块拼在 Prompt 末尾，同样属于内部上下文，从出现处截断。
+  const cut = withoutDirective.indexOf("[引用工作空间文件");
+  const withoutRefs = cut >= 0 ? withoutDirective.slice(0, cut) : withoutDirective;
+  return withoutRefs.replace(/\s+/g, " ").trim().slice(0, 40);
 }

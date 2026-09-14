@@ -11,8 +11,11 @@ import { setTimeout as delay } from "node:timers/promises";
 const root = nodePath.resolve(new URL("..", import.meta.url).pathname);
 const dataDir = await mkdtemp(nodePath.join(os.tmpdir(), "office-agent-smoke-"));
 const workspaceDir = nodePath.join(dataDir, "workspace");
+const alternateWorkspaceDir = nodePath.join(dataDir, "alternate-workspace");
 await mkdir(workspaceDir, { recursive: true });
+await mkdir(alternateWorkspaceDir, { recursive: true });
 await writeFile(nodePath.join(workspaceDir, "probe-attachment.txt"), "ok");
+await writeFile(nodePath.join(alternateWorkspaceDir, "workspace-switch.txt"), "ok");
 
 process.env.PI_OFFLINE = "1";
 const agentDir = nodePath.join(dataDir, "pi");
@@ -98,9 +101,28 @@ try {
   );
   const deepseek = (provs.payload ?? []).find((p) => p.id === "deepseek");
   check(
-    "deepseek catalog",
-    !!deepseek && deepseek.models.length > 0,
-    deepseek ? `${deepseek.models.length} models, auth=${deepseek.auth}` : "missing",
+    "deepseek preset has baseUrl",
+    !!deepseek && !!deepseek.baseUrl,
+    deepseek ? `baseUrl=${deepseek.baseUrl} models=${deepseek.models.length}` : "missing",
+  );
+
+  // 3.1 模型清单由应用配置：写入一个模型后，该厂商应变为可按模型解析。
+  const probeModelId = "smoke-model-1";
+  await request("config.custom.save", {
+    provider: {
+      id: "deepseek",
+      name: "DeepSeek",
+      baseUrl: deepseek.baseUrl,
+      api: "openai-completions",
+      models: [{ id: probeModelId, name: probeModelId, reasoning: true, contextWindow: 128000, maxTokens: 8192 }],
+    },
+  });
+  const provs2 = await request("config.providers");
+  const ds2 = (provs2.payload ?? []).find((p) => p.id === "deepseek");
+  check(
+    "app-managed model list is used",
+    !!ds2 && ds2.models.some((m) => m.id === probeModelId),
+    `models=[${(ds2?.models ?? []).map((m) => m.id).join(", ")}]`,
   );
 
   // 3. session create + open (listing happens after runs: pi indexes sessions
@@ -114,7 +136,12 @@ try {
   //    proving acceptance -> events -> run.end(error) and run-lock release.
   await request("config.setApiKey", { providerId: "deepseek", apiKey: "sk-dummy-smoke-key" });
   const marker = allLines.length;
-  const start = await request("run.start", { prompt: "ping", providerId: "deepseek", modelId: deepseek.models[0].id });
+  const start = await request("run.start", {
+    prompt: "ping",
+    providerId: "deepseek",
+    modelId: probeModelId,
+    sessionTitle: "帮我整理 Excel",
+  });
   check("run.start accepted", start.ok, JSON.stringify(start.payload ?? start.error));
   const deadline = Date.now() + 60000;
   let runEnd = null;
@@ -154,15 +181,31 @@ try {
   const list = await request("session.list");
   check("session.list after runs", list.ok && list.payload.length >= 1, `${list.payload?.length} sessions, first title: ${list.payload?.[0]?.title?.slice(0, 24)}`);
 
-  // 7. workspace.files lists workspace files for the attachment picker
+  // 6.1 会话标题来自 UI 显式传入的 sessionTitle，而不是被权限指令污染的 firstMessage
+  check(
+    "session title from sessionTitle param",
+    list.payload?.some((s) => s.title === "帮我整理 Excel"),
+    `titles=[${(list.payload ?? []).map((s) => s.title).join(" | ")}]`,
+  );
+
+  // 7. 当前会话切换 Workspace 后，文件能力随新的 cwd 切换。
+  const switched = await request("session.setCwd", { cwd: alternateWorkspaceDir });
+  const switchedFiles = await request("workspace.files");
+  check(
+    "session.setCwd switches workspace",
+    switched.ok && (switchedFiles.payload?.files ?? []).some((f) => f.path === "workspace-switch.txt"),
+    JSON.stringify(switchedFiles.payload ?? switched.error),
+  );
+
+  // 8. workspace.files lists workspace files for the attachment picker
   const wsFiles = await request("workspace.files");
   check(
     "workspace.files lists workspace",
-    wsFiles.ok && (wsFiles.payload?.files ?? []).some((f) => f.path === "probe-attachment.txt"),
+    wsFiles.ok && (wsFiles.payload?.files ?? []).some((f) => f.path === "workspace-switch.txt"),
     JSON.stringify(wsFiles.payload?.files ?? wsFiles.error),
   );
 
-  // 8. fs.import 落盘用户系统文件到工作空间
+  // 9. fs.import 落盘用户系统文件到工作空间
   const imported = await request("fs.import", {
     name: "截图 说明.png",
     dataBase64: Buffer.from("fake-image-bytes").toString("base64"),

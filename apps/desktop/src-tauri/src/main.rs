@@ -32,6 +32,13 @@ struct AppState {
     ws: WsSink,
 }
 
+#[tauri::command]
+fn pick_folder() -> Option<String> {
+    rfd::FileDialog::new()
+        .pick_folder()
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
 fn home_dir() -> PathBuf {
     std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
@@ -54,10 +61,32 @@ fn engine_path() -> Result<PathBuf, String> {
     }
 }
 
+/// 引擎 stderr 落盘：追加写入，单文件超过 2MB 时截断重写，避免无限增长。
+async fn append_engine_log(path: &PathBuf, line: &str) {
+    const LIMIT: u64 = 2 * 1024 * 1024;
+    if let Some(dir) = path.parent() {
+        let _ = tokio::fs::create_dir_all(dir).await;
+    }
+    if let Ok(meta) = tokio::fs::metadata(path).await {
+        if meta.len() > LIMIT {
+            let _ = tokio::fs::write(path, b"").await;
+        }
+    }
+    if let Ok(mut file) = tokio::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .await
+    {
+        let _ = file.write_all(format!("{line}\n").as_bytes()).await;
+    }
+}
+
 fn main() {
     let stdin = Arc::new(Mutex::new(None::<ChildStdin>));
     let ws: WsSink = Arc::new(Mutex::new(None));
     tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![pick_folder])
         .manage(AppState {
             engine: Mutex::new(None),
             stdin: stdin.clone(),
@@ -99,7 +128,8 @@ async fn run_bridge(
     let agent_dir = home.join(".office-agent").join("pi");
     let workspace = home.join("office-agent-workspace");
 
-    let mut child = Command::new(&engine)
+    let mut command = Command::new(&engine);
+    command
         .args([
             "--agent-dir",
             &agent_dir.to_string_lossy(),
@@ -108,13 +138,37 @@ async fn run_bridge(
         ])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::inherit())
+        // 引擎 stderr 必须 pipe 出来：Windows 无控制台时 inherit 是无效句柄，
+        // 而且日志需要落盘才能排查问题。
+        .stderr(std::process::Stdio::piped());
+    // Windows 下以 CREATE_NO_WINDOW 创建，避免随附引擎弹出 CMD 窗口；
+    // 该标志不影响 stdin/stdout 管道。
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.as_std_mut().creation_flags(CREATE_NO_WINDOW);
+    }
+    let mut child = command
         .spawn()
         .map_err(|e| format!("启动引擎失败: {e}"))?;
     let child_stdin = child.stdin.take();
     let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
     *app.state::<AppState>().engine.lock().await = Some(child);
     *stdin.lock().await = child_stdin;
+
+    // 引擎 stderr → 应用数据目录日志文件（追加，超过 2MB 截断），同时打到开发终端。
+    if let Some(err) = stderr {
+        let log_path = home_dir().join(".office-agent").join("logs").join("engine.log");
+        tauri::async_runtime::spawn(async move {
+            let mut lines = BufReader::new(err).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                eprintln!("[engine] {line}");
+                append_engine_log(&log_path, &line).await;
+            }
+        });
+    }
 
     // 引擎 stdout（JSONL）→ 转发给当前 WS 客户端
     if let Some(out) = stdout {
