@@ -124,10 +124,14 @@ jobs:
         with:
           merge-multiple: true
           path: dist
+      - name: 产物清单
+        run: ls -laR dist
       - name: 发布 Release
         uses: softprops/action-gh-release@v2
         with:
           name: "GoHomeBuddy ${{ github.ref_name }}（开发预览）"
           body: "开发预览版：安装包可构建、可安装；本地引擎 sidecar 随包分发尚未实现（见 README「尚未完成」）。"
           generate_release_notes: true
-          files: dist/*
+          files: |
+            dist/**
+            dist/*
