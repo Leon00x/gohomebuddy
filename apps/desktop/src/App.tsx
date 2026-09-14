@@ -561,14 +561,6 @@ export function App() {
     }
   }
 
-  async function loadWorkspaceFiles() {
-    if (!client.current.connected) return [];
-    const res = (await client.current.request("workspace.files")) as {
-      files?: { path: string }[];
-    };
-    return res.files ?? [];
-  }
-
   const composerCommon = {
     draft,
     onDraft: setDraft,
@@ -593,7 +585,7 @@ export function App() {
     importingFiles,
     importError,
     onClearImportError: () => setImportError(""),
-    loadWorkspaceFiles: () => loadWorkspaceFiles(),
+
     providers,
     selection,
     onSelectModel: setSelection,

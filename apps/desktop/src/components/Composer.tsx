@@ -154,7 +154,6 @@ export function Composer({
   importingFiles,
   importError,
   onClearImportError,
-  loadWorkspaceFiles,
   hero,
 }: {
   draft: string;
@@ -183,7 +182,6 @@ export function Composer({
   importingFiles?: boolean;
   importError?: string;
   onClearImportError?: () => void;
-  loadWorkspaceFiles?: () => Promise<{ path: string }[]>;
   hero?: boolean;
 }) {
   const [groupMenu, setGroupMenu] = useState(false);
@@ -192,8 +190,6 @@ export function Composer({
   const [thinkingPop, setThinkingPop] = useState(false);
   const [permPop, setPermPop] = useState(false);
   const [attachPop, setAttachPop] = useState(false);
-  const [attachQuery, setAttachQuery] = useState("");
-  const [wsFiles, setWsFiles] = useState<{ path: string }[] | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -244,18 +240,10 @@ export function Composer({
   }
 
   async function toggleAttachPop() {
-    const next = !attachPop;
-    setAttachPop(next);
+    setAttachPop(!attachPop);
     setGroupMenu(false);
     setThinkingPop(false);
     setPermPop(false);
-    if (next && wsFiles === null && loadWorkspaceFiles) {
-      try {
-        setWsFiles(await loadWorkspaceFiles());
-      } catch {
-        setWsFiles([]);
-      }
-    }
   }
 
   function toggleAttachment(path: string) {
@@ -277,10 +265,6 @@ export function Composer({
     setPathDraft("");
     setAttachPop(false);
   }
-
-  const filteredFiles = (wsFiles ?? []).filter((f) =>
-    attachQuery.trim() ? f.path.toLowerCase().includes(attachQuery.trim().toLowerCase()) : true,
-  );
 
   useLayoutEffect(() => {
     const el = toolbarRef.current;
@@ -415,16 +399,15 @@ export function Composer({
               )}
             </div>
           )}
-          {loadWorkspaceFiles && (
-            <div className="group-anchor">
-              <button
-                className={"group-select attach-btn" + (attachments?.length ? " has-attachments" : "")}
-                onClick={() => void toggleAttachPop()}
-                title="引用工作空间文件"
-              >
-                <Plus size={16} />
-                {attachments?.length ? <span className="attach-count">{attachments.length}</span> : null}
-              </button>
+          <div className="group-anchor">
+            <button
+              className={"group-select attach-btn" + (attachments?.length ? " has-attachments" : "")}
+              onClick={() => void toggleAttachPop()}
+              title="添加附件"
+            >
+              <Plus size={16} />
+              {attachments?.length ? <span className="attach-count">{attachments.length}</span> : null}
+            </button>
               {attachPop && (
                 <>
                   <div className="menu-overlay" onClick={() => setAttachPop(false)} />
@@ -473,43 +456,10 @@ export function Composer({
                         输入路径添加…
                       </button>
                     )}
-                    <div className="attach-divider">或从工作空间选择</div>
-                    <input
-                      value={attachQuery}
-                      placeholder="搜索工作空间文件"
-                      onChange={(e) => setAttachQuery(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Escape") setAttachPop(false);
-                      }}
-                    />
-                    <div className="attach-list">
-                      {wsFiles === null ? (
-                        <p className="attach-empty">正在读取工作空间…</p>
-                      ) : filteredFiles.length === 0 ? (
-                        <p className="attach-empty">{attachQuery ? "没有匹配的文件" : "工作空间还没有文件"}</p>
-                      ) : (
-                        filteredFiles.map((f) => {
-                          const on = attachments?.includes(f.path);
-                          return (
-                            <button
-                              key={f.path}
-                              className={on ? "current" : ""}
-                              title={f.path}
-                              onClick={() => toggleAttachment(f.path)}
-                            >
-                              <FileText size={13} />
-                              <span className="f-path">{f.path}</span>
-                              {on && <Check size={13} />}
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
+              </div>
+            </>
           )}
+          </div>
         </div>
         <div>
           <div className="group-anchor perm-anchor">
